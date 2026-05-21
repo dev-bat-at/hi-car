@@ -1,0 +1,354 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
+import '../../../core/app_colors.dart';
+import '../../../data/models/audio_model.dart';
+import '../../../providers/audio_provider.dart';
+
+class AudioListWidget extends StatelessWidget {
+  const AudioListWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AudioProvider>(
+      builder: (context, audioProvider, _) {
+        final list = audioProvider.audioList;
+
+        if (list.isEmpty) {
+          return _EmptyState();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              child: Row(
+                children: [
+                  Icon(Icons.library_music_rounded,
+                      color: AppColors.primary, size: 18.sp),
+                  SizedBox(width: 8.w),
+                  Text(
+                    'Danh sách audio (${list.length})',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 12.h),
+            ListView.separated(
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: list.length,
+              separatorBuilder: (_, __) => SizedBox(height: 10.h),
+              itemBuilder: (context, index) {
+                return _AudioCard(audio: list[index]);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(vertical: 32.h),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.cloud_download_outlined,
+            color: AppColors.textHint,
+            size: 48.sp,
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'Chưa có audio nào',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Nhấn nút Đồng bộ để tải audio về',
+            style: TextStyle(
+              color: AppColors.textHint,
+              fontSize: 12.sp,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AudioCard extends StatelessWidget {
+  final AudioModel audio;
+
+  const _AudioCard({required this.audio});
+
+  @override
+  Widget build(BuildContext context) {
+    final audioProvider = context.read<AudioProvider>();
+    final isPlaying = audioProvider.currentlyPlaying?.id == audio.id &&
+        audioProvider.isPlaying;
+
+    final typeColor = audio.type == AudioType.greeting
+        ? AppColors.primary
+        : audio.type == AudioType.goodbye
+            ? const Color(0xFF00E676)
+            : AppColors.warning;
+
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(
+          color: isPlaying ? AppColors.primary : AppColors.border,
+          width: isPlaying ? 1.5 : 1,
+        ),
+        boxShadow: isPlaying
+            ? [
+                BoxShadow(
+                  color: AppColors.primaryGlow,
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        children: [
+          // Type indicator
+          Container(
+            width: 44.w,
+            height: 44.w,
+            decoration: BoxDecoration(
+              color: typeColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: typeColor.withOpacity(0.3)),
+            ),
+            child: Icon(
+              audio.type == AudioType.greeting
+                  ? Icons.waving_hand_rounded
+                  : audio.type == AudioType.goodbye
+                      ? Icons.directions_car_rounded
+                      : Icons.audiotrack_rounded,
+              color: typeColor,
+              size: 20.sp,
+            ),
+          ),
+
+          SizedBox(width: 14.w),
+
+          // Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  audio.title,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 4.h),
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 8.w, vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color: typeColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6.r),
+                      ),
+                      child: Text(
+                        audio.type.label,
+                        style: TextStyle(
+                          color: typeColor,
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    if (audio.isActiveGreeting)
+                      _StatusBadge(label: '✓ Lời chào', color: AppColors.primary),
+                    if (audio.isActiveGoodbye)
+                      _StatusBadge(
+                          label: '✓ Tạm biệt',
+                          color: const Color(0xFF00E676)),
+                  ],
+                ),
+                if (audio.isDownloaded) ...[
+                  SizedBox(height: 4.h),
+                  Row(
+                    children: [
+                      Icon(Icons.download_done_rounded,
+                          color: AppColors.success, size: 12.sp),
+                      SizedBox(width: 4.w),
+                      Text(
+                        'Đã tải · ${audio.durationSeconds}s',
+                        style: TextStyle(
+                          color: AppColors.textHint,
+                          fontSize: 10.sp,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Actions
+          _AudioActions(audio: audio, isPlaying: isPlaying),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _StatusBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6.r),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9.sp,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioActions extends StatelessWidget {
+  final AudioModel audio;
+  final bool isPlaying;
+
+  const _AudioActions({required this.audio, required this.isPlaying});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.read<AudioProvider>();
+
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert_rounded,
+          color: AppColors.textSecondary, size: 20.sp),
+      color: AppColors.cardElevated,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+      onSelected: (value) async {
+        switch (value) {
+          case 'play':
+            if (isPlaying) {
+              await provider.stopAudio();
+            } else {
+              await provider.playAudio(audio);
+            }
+            break;
+          case 'set_greeting':
+            await provider.setAsGreeting(audio.id);
+            _showSnack(context, 'Đã đặt làm lời chào ✓');
+            break;
+          case 'set_goodbye':
+            await provider.setAsGoodbye(audio.id);
+            _showSnack(context, 'Đã đặt làm lời tạm biệt ✓');
+            break;
+          case 'delete':
+            await provider.deleteAudio(audio.id);
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        if (audio.hasLocalFile)
+          _popupItem(
+            value: 'play',
+            icon: isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+            label: isPlaying ? 'Dừng' : 'Nghe thử',
+          ),
+        _popupItem(
+          value: 'set_greeting',
+          icon: Icons.waving_hand_rounded,
+          label: 'Đặt làm lời chào',
+          color: AppColors.primary,
+        ),
+        _popupItem(
+          value: 'set_goodbye',
+          icon: Icons.directions_car_rounded,
+          label: 'Đặt làm tạm biệt',
+          color: const Color(0xFF00E676),
+        ),
+        _popupItem(
+          value: 'delete',
+          icon: Icons.delete_outline_rounded,
+          label: 'Xoá',
+          color: AppColors.error,
+        ),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _popupItem({
+    required String value,
+    required IconData icon,
+    required String label,
+    Color color = AppColors.textPrimary,
+  }) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18.sp),
+          SizedBox(width: 12.w),
+          Text(label, style: TextStyle(color: color, fontSize: 13.sp)),
+        ],
+      ),
+    );
+  }
+
+  void _showSnack(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+}
+

@@ -1,0 +1,96 @@
+name: hi_car
+description: "Giọng Thương Gia - Automotive Audio Background System"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.3 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  provider: ^6.1.2
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # UI
+  flutter_screenutil: ^5.9.3
+
+  # Audio
+  just_audio: ^0.9.42
+  audio_service: ^0.18.15
+
+  # Network
+  dio: ^5.7.0
+
+  # Storage
+  shared_preferences: ^2.3.3
+  path_provider: ^2.1.5
+
+  # Bluetooth
+  flutter_blue_plus: ^1.35.3
+
+  # Overlay
+  flutter_overlay_window: ^0.5.0
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # Utils
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo_thuongia.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/images/logo_thuongia.png"
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/audio/
+    - assets/images/
+
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: assets/font/Roboto-Thin.ttf
+          weight: 100
+        - asset: assets/font/Roboto-ExtraLight.ttf
+          weight: 200
+        - asset: assets/font/Roboto-Light.ttf
+          weight: 300
+        - asset: assets/font/Roboto-Regular.ttf
+          weight: 400
+        - asset: assets/font/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/font/Roboto-SemiBold.ttf
+          weight: 600
+        - asset: assets/font/Roboto-Bold.ttf
+          weight: 700
+        - asset: assets/font/Roboto-ExtraBold.ttf
+          weight: 800
+        - asset: assets/font/Roboto-Black.ttf
+          weight: 900
