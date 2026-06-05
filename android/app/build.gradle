@@ -32,7 +32,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace "com.hicar.ora.limited"
     compileSdk flutter.compileSdkVersion
-    ndkVersion "29.0.13846066"
+    // ndkVersion "29.0.13846066"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
