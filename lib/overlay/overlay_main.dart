@@ -1,10 +1,24 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-/// Overlay entry point - runs in separate Flutter engine instance
-@pragma("vm:entry-point")
+Future<void> _reportOverlayError(String message) async {
+  debugPrint('Overlay error: $message');
+  try {
+    await FlutterOverlayWindow.shareData({
+      'type': 'overlay_error',
+      'message': message,
+    });
+  } catch (_) {}
+}
+
+@pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    _reportOverlayError(details.exceptionAsString());
+  };
   runApp(const OverlayApp());
 }
 
@@ -30,32 +44,39 @@ class OverlayBubble extends StatefulWidget {
 
 class _OverlayBubbleState extends State<OverlayBubble>
     with SingleTickerProviderStateMixin {
-  bool _expanded = false;
-  late AnimationController _animController;
-  late Animation<double> _expandAnim;
-
-  // Track if bubble is currently dragged into the close zone
-  bool _isInCloseZone = false;
-  int _lastCheckTime = 0;
+  static const double _compactSize = 84.0;
+  static const double _expandedWidth = 276.0;
+  static const double _expandedHeight = 212.0;
+  static const double _bubbleDockWidth = 84.0;
+  static const double _panelTopInset = 6.0;
+  static const double _edgePadding = 8.0;
+  static const double _topPadding = 60.0;
+  static const double _bottomPadding = 32.0;
 
   static const Color _cyan = Color(0xFF00E5FF);
   static const Color _bg = Color(0xFF0A0A0A);
   static const Color _red = Color(0xFFFF3D71);
+
+  bool _expanded = false;
+  bool _bubbleOnLeft = true;
+  bool _isTransitioning = false;
+  Offset _windowPosition = const Offset(_edgePadding, 180.0);
+
+  late final AnimationController _animController;
+  late final Animation<double> _expandAnim;
 
   @override
   void initState() {
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 160),
     );
     _expandAnim = CurvedAnimation(
       parent: _animController,
       curve: Curves.easeOutCubic,
     );
-    
-    // Ensure the overlay size is strictly compact circular on start
-    _safeResizeOverlay(80, 80, true);
+    _initOverlaySize();
   }
 
   @override
@@ -64,206 +85,450 @@ class _OverlayBubbleState extends State<OverlayBubble>
     super.dispose();
   }
 
-  Future<void> _safeResizeOverlay(int width, int height, bool enableDrag) async {
+  double get _deviceRatio {
+    final views = ui.PlatformDispatcher.instance.views;
+    return views.isNotEmpty ? views.first.devicePixelRatio : 3.0;
+  }
+
+  double get _screenWidth {
+    final views = ui.PlatformDispatcher.instance.views;
+    return views.isNotEmpty
+        ? (views.first.physicalSize.width / _deviceRatio)
+        : 390.0;
+  }
+
+  double get _screenHeight {
+    final views = ui.PlatformDispatcher.instance.views;
+    return views.isNotEmpty
+        ? (views.first.physicalSize.height / _deviceRatio)
+        : 844.0;
+  }
+
+  int _toOverlayUnit(double logical) => logical.round();
+
+  Future<void> _initOverlaySize() async {
+    await _syncWindowPosition(
+      width: _compactSize,
+      height: _compactSize,
+      useFallback: true,
+    );
+    await _applyCompactWindow();
+  }
+
+  Future<void> _syncWindowPosition({
+    required double width,
+    required double height,
+    bool useFallback = false,
+  }) async {
     try {
-      await FlutterOverlayWindow.resizeOverlay(width, height, enableDrag);
+      final pos = await FlutterOverlayWindow.getOverlayPosition();
+      Offset next = Offset(pos.x, pos.y);
+      if (next == Offset.zero && useFallback) {
+        next = const Offset(_edgePadding, 180.0);
+      }
+      _windowPosition = _clampPosition(next, width, height);
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
-      debugPrint("Overlay resize failed: $e");
+      debugPrint('Overlay position sync failed: $e');
     }
   }
 
-  Future<void> _toggleExpand() async {
-    if (_isInCloseZone) return; // Don't toggle when in close zone
-    
-    if (!_expanded) {
-      // 1. Expand the window boundary first so the menu content is not clipped
-      await _safeResizeOverlay(80, 380, true);
-      setState(() => _expanded = true);
-      _animController.forward();
-    } else {
-      // 2. Collapse menu content
-      setState(() => _expanded = false);
+  Offset _clampPosition(Offset position, double width, double height) {
+    final maxX =
+        (_screenWidth - width - _edgePadding).clamp(_edgePadding, double.infinity);
+    final maxY =
+        (_screenHeight - height - _bottomPadding).clamp(_topPadding, double.infinity);
+    return Offset(
+      position.dx.clamp(_edgePadding, maxX),
+      position.dy.clamp(_topPadding, maxY),
+    );
+  }
+
+  Offset _snapCompactPosition(Offset position) {
+    final snapX = position.dx + (_compactSize / 2) < _screenWidth / 2
+        ? _edgePadding
+        : _screenWidth - _compactSize - _edgePadding;
+    return _clampPosition(
+      Offset(snapX, position.dy),
+      _compactSize,
+      _compactSize,
+    );
+  }
+
+  Future<void> _moveOverlay(Offset position) async {
+    await FlutterOverlayWindow.moveOverlay(
+      OverlayPosition(
+        _toOverlayUnit(position.dx).toDouble(),
+        _toOverlayUnit(position.dy).toDouble(),
+      ),
+    );
+  }
+
+  Future<void> _applyCompactWindow() async {
+    try {
+      await FlutterOverlayWindow.resizeOverlay(
+        _toOverlayUnit(_compactSize),
+        _toOverlayUnit(_compactSize),
+        true,
+      );
+      await _moveOverlay(_windowPosition);
+    } catch (e) {
+      debugPrint('Overlay compact resize failed: $e');
+    }
+  }
+
+  Future<void> _expandOverlay() async {
+    if (_isTransitioning) return;
+    _isTransitioning = true;
+
+    await _syncWindowPosition(
+      width: _compactSize,
+      height: _compactSize,
+      useFallback: true,
+    );
+
+    final compactPosition = _snapCompactPosition(_windowPosition);
+    _bubbleOnLeft = compactPosition.dx + (_compactSize / 2) < _screenWidth / 2;
+
+    final expandedX = _bubbleOnLeft
+        ? compactPosition.dx
+        : compactPosition.dx - (_expandedWidth - _compactSize);
+    final expandedY = compactPosition.dy;
+
+    _windowPosition = _clampPosition(
+      Offset(expandedX, expandedY),
+      _expandedWidth,
+      _expandedHeight,
+    );
+
+    try {
+      await FlutterOverlayWindow.resizeOverlay(
+        _toOverlayUnit(_expandedWidth),
+        _toOverlayUnit(_expandedHeight),
+        true,
+      );
+      await _moveOverlay(_windowPosition);
+      if (mounted) {
+        setState(() => _expanded = true);
+      }
+      await _animController.forward(from: 0);
+    } catch (e) {
+      debugPrint('Overlay expand failed: $e');
+      await _applyCompactWindow();
+    } finally {
+      _isTransitioning = false;
+    }
+  }
+
+  Future<void> _collapseOverlay() async {
+    if (_isTransitioning) return;
+    _isTransitioning = true;
+
+    await _syncWindowPosition(
+      width: _expandedWidth,
+      height: _expandedHeight,
+    );
+
+    try {
       await _animController.reverse();
-      // 3. Shrink window boundary back to compact circle after animation completes
-      await _safeResizeOverlay(80, 80, true);
+    } catch (_) {}
+
+    final compactX = _bubbleOnLeft
+        ? _windowPosition.dx
+        : _windowPosition.dx + (_expandedWidth - _compactSize);
+    final compactY = _windowPosition.dy;
+
+    _windowPosition = _snapCompactPosition(Offset(compactX, compactY));
+
+    if (mounted) {
+      setState(() => _expanded = false);
+    }
+
+    await _applyCompactWindow();
+    _isTransitioning = false;
+  }
+
+  Future<void> _toggleExpand() async {
+    if (_expanded) {
+      await _collapseOverlay();
+    } else {
+      await _expandOverlay();
     }
   }
 
   Future<void> _sendAction(String action) async {
     await FlutterOverlayWindow.shareData({'action': action});
-    // Auto collapse after pressing an action
     if (_expanded) {
-      await _toggleExpand();
+      await _collapseOverlay();
     }
+  }
+
+  Future<void> _hideOverlay() async {
+    try {
+      await FlutterOverlayWindow.closeOverlay();
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final screenWidth = screenSize.width > 0 ? screenSize.width : 1080.0;
-    final screenHeight = screenSize.height > 0 ? screenSize.height : 2400.0;
+    if (!_expanded) {
+      return Material(
+        color: Colors.transparent,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _toggleExpand,
+          child: const Center(
+            child: _BubbleShell(isExpanded: false),
+          ),
+        ),
+      );
+    }
 
     return Material(
       color: Colors.transparent,
-      child: Listener(
-        onPointerMove: (event) async {
-          final now = DateTime.now().millisecondsSinceEpoch;
-          // Throttle getOverlayPosition check to 100ms to prevent lag/skipped frames
-          if (now - _lastCheckTime > 100) {
-            _lastCheckTime = now;
-            try {
-              final pos = await FlutterOverlayWindow.getOverlayPosition();
-              // Close Zone: Bottom 12% of screen height, and horizontally near center
-              final inZone = pos.y > (screenHeight - 280) &&
-                  pos.x > (screenWidth / 2 - 160) &&
-                  pos.x < (screenWidth / 2 + 160);
-
-              if (inZone != _isInCloseZone) {
-                setState(() {
-                  _isInCloseZone = inZone;
-                });
-              }
-            } catch (_) {}
-          }
-        },
-        onPointerUp: (event) async {
-          if (_isInCloseZone) {
-            try {
-              await FlutterOverlayWindow.closeOverlay();
-            } catch (_) {}
-          }
-        },
-        child: AnimatedBuilder(
-          animation: _expandAnim,
-          builder: (context, child) {
-            final activeColor = _isInCloseZone ? _red : _cyan;
-
-            return Container(
-              width: 64.0,
-              clipBehavior: Clip.antiAlias, // Critical: Prevents RenderFlex overflow errors!
-              padding: const EdgeInsets.symmetric(vertical: 6.0),
-              decoration: BoxDecoration(
-                color: _bg.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(32.0),
-                border: Border.all(
-                  color: activeColor.withOpacity(_isInCloseZone ? 0.95 : 0.65),
-                  width: _isInCloseZone ? 2.0 : 1.5,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: _collapseOverlay,
+        onPanStart: (_) => _collapseOverlay(),
+        child: SizedBox(
+          width: _expandedWidth,
+          height: _expandedHeight,
+          child: Stack(
+            children: [
+              Positioned(
+                left: _bubbleOnLeft ? 0 : _expandedWidth - _bubbleDockWidth,
+                top: _panelTopInset,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _collapseOverlay,
+                  child: const _BubbleShell(isExpanded: true),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: activeColor.withOpacity(_isInCloseZone ? 0.6 : 0.35),
-                    blurRadius: _isInCloseZone ? 20 : 10,
-                    spreadRadius: _isInCloseZone ? 2 : 1,
-                  ),
-                ],
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Main bubble icon (acts as drag handle and toggle)
-                  GestureDetector(
-                    onTap: _toggleExpand,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      width: 52.0,
-                      height: 52.0,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: _isInCloseZone
-                              ? [const Color(0xFFFF5252), const Color(0xFFFF1744)]
-                              : [const Color(0xFF00E5FF), const Color(0xFF0072FF)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: activeColor.withOpacity(0.4),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        _isInCloseZone
-                            ? Icons.delete_forever_rounded
-                            : (_expanded ? Icons.close_rounded : Icons.volume_up_rounded),
-                        color: Colors.black,
-                        size: 24.0,
-                      ),
-                    ),
-                  ),
+              Positioned(
+                left: _bubbleOnLeft ? 62.0 : 0.0,
+                top: _panelTopInset,
+                child: _buildMenuCard(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-                  // Expandable Menu Items
-                  SizeTransition(
-                    sizeFactor: _expandAnim,
-                    axisAlignment: -1,
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 8.0),
-                        _OverlayActionButton(
-                          icon: Icons.waving_hand_rounded,
-                          color: _cyan,
-                          onTap: () => _sendAction('play_greeting'),
-                        ),
-                        const SizedBox(height: 8.0),
-                        _OverlayActionButton(
-                          icon: Icons.directions_car_rounded,
-                          color: const Color(0xFF00E676),
-                          onTap: () => _sendAction('play_goodbye'),
-                        ),
-                        const SizedBox(height: 8.0),
-                        _OverlayActionButton(
-                          icon: Icons.stop_circle_rounded,
-                          color: _red,
-                          onTap: () => _sendAction('stop_audio'),
-                        ),
-                        const SizedBox(height: 8.0),
-                        _OverlayActionButton(
-                          icon: Icons.open_in_new_rounded,
-                          color: Colors.white,
-                          onTap: () => _sendAction('open_app'),
-                        ),
-                      ],
+  Widget _buildMenuCard() {
+    return ScaleTransition(
+      scale: _expandAnim,
+      child: FadeTransition(
+        opacity: _expandAnim,
+        child: Container(
+          width: 206.0,
+          height: 190.0,
+          padding: const EdgeInsets.all(12.0),
+          decoration: BoxDecoration(
+            color: _bg.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(18.0),
+            border: Border.all(
+              color: _cyan.withValues(alpha: 0.35),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _cyan.withValues(alpha: 0.16),
+                blurRadius: 12.0,
+                spreadRadius: 1.0,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 5.0,
+                    height: 14.0,
+                    decoration: BoxDecoration(
+                      color: _cyan,
+                      borderRadius: BorderRadius.circular(3.0),
+                    ),
+                  ),
+                  const SizedBox(width: 8.0),
+                  const Expanded(
+                    child: Text(
+                      'GIỌNG THƯƠNG GIA',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.0,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _collapseOverlay,
+                    child: Container(
+                      width: 26.0,
+                      height: 26.0,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 16.0,
+                      ),
                     ),
                   ),
                 ],
               ),
-            );
-          },
+              const SizedBox(height: 10.0),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildMenuItem(
+                        icon: Icons.waving_hand_rounded,
+                        label: 'Phat loi chao',
+                        color: _cyan,
+                        onTap: () => _sendAction('play_greeting'),
+                      ),
+                      const SizedBox(height: 6.0),
+                      _buildMenuItem(
+                        icon: Icons.directions_car_rounded,
+                        label: 'Phat tam biet',
+                        color: const Color(0xFF00E676),
+                        onTap: () => _sendAction('play_goodbye'),
+                      ),
+                      const SizedBox(height: 6.0),
+                      _buildMenuItem(
+                        icon: Icons.stop_circle_rounded,
+                        label: 'Dung am thanh',
+                        color: _red,
+                        onTap: () => _sendAction('stop_audio'),
+                      ),
+                      const SizedBox(height: 6.0),
+                      _buildMenuItem(
+                        icon: Icons.open_in_new_rounded,
+                        label: 'Mo ung dung',
+                        color: Colors.white,
+                        onTap: () => _sendAction('open_app'),
+                      ),
+                      const SizedBox(height: 6.0),
+                      _buildMenuItem(
+                        icon: Icons.visibility_off_rounded,
+                        label: 'An bong bong',
+                        color: const Color(0xFFFFB74D),
+                        onTap: _hideOverlay,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuItem({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 26.0,
+        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(10.0),
+          border: Border.all(
+            color: color.withValues(alpha: 0.16),
+            width: 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 16.0),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _OverlayActionButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
+class _BubbleShell extends StatelessWidget {
+  final bool isExpanded;
 
-  const _OverlayActionButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
+  const _BubbleShell({
+    required this.isExpanded,
   });
+
+  static const Color _cyan = Color(0xFF00E5FF);
+  static const Color _bg = Color(0xFF0A0A0A);
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48.0,
-        height: 48.0,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color.withOpacity(0.12),
-          border: Border.all(
-            color: color.withOpacity(0.35),
-            width: 1.0,
+    return SizedBox(
+      width: 84.0,
+      height: 84.0,
+      child: Center(
+        child: Container(
+          width: 62.0,
+          height: 62.0,
+          decoration: BoxDecoration(
+            color: _bg.withValues(alpha: 0.96),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _cyan.withValues(alpha: 0.8),
+              width: 1.6,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _cyan.withValues(alpha: 0.26),
+                blurRadius: 10.0,
+                spreadRadius: 1.0,
+              ),
+            ],
+          ),
+          child: Center(
+            child: Container(
+              width: 50.0,
+              height: 50.0,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFF00E5FF), Color(0xFF00838F)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Icon(
+                isExpanded ? Icons.close_rounded : Icons.volume_up_rounded,
+                color: Colors.black,
+                size: 24.0,
+              ),
+            ),
           ),
         ),
-        child: Icon(icon, color: color, size: 20.0),
       ),
     );
   }

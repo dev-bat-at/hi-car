@@ -46,21 +46,32 @@ class _MyAppState extends State<MyApp> {
   void _initOverlayListener() {
     try {
       FlutterOverlayWindow.overlayListener.listen((data) {
-        if (data is Map && data.containsKey('action')) {
-          final action = data['action'];
-          switch (action) {
-            case 'play_greeting':
-              _audioProvider.playGreetingViaNative();
-              break;
-            case 'play_goodbye':
-              _audioProvider.playGoodbyeViaNative();
-              break;
-            case 'stop_audio':
-              _audioProvider.stopNativeAudio();
-              break;
-            case 'open_app':
-              ServiceChannel.instance.openApp();
-              break;
+        if (data is Map) {
+          final type = data['type'];
+
+          if (type == 'overlay_error') {
+            final message = (data['message'] ?? 'Unknown overlay error').toString();
+            OverlayDebugStore.record(message);
+            debugPrint('Overlay error: $message');
+            return;
+          }
+
+          if (data.containsKey('action')) {
+            final action = data['action'];
+            switch (action) {
+              case 'play_greeting':
+                _audioProvider.playGreetingViaNative();
+                break;
+              case 'play_goodbye':
+                _audioProvider.playGoodbyeViaNative();
+                break;
+              case 'stop_audio':
+                _audioProvider.stopNativeAudio();
+                break;
+              case 'open_app':
+                ServiceChannel.instance.openApp();
+                break;
+            }
           }
         }
       });

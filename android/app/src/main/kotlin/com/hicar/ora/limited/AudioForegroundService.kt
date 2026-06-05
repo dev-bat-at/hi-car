@@ -36,6 +36,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         const val NOTIFICATION_CHANNEL_ID = "hicar_service_channel"
         const val NOTIFICATION_ID = 1001
 
+        @Volatile var connectionMode: String = "phone_bluetooth"
         @Volatile var targetDeviceAddress: String = ""
         @Volatile var delaySeconds: Int = 5
         @Volatile var greetingAudioPath: String = ""
@@ -56,6 +57,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
+        loadPrefs()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         setupNotificationChannel()
         setupMediaSession()
@@ -63,7 +65,26 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         buildAudioFocusRequest()
     }
 
+    private fun loadPrefs() {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
+        targetDeviceAddress = prefs.getString("flutter.target_device_address", "") ?: ""
+        
+        val delayVal = prefs.all["flutter.delay_seconds"]
+        delaySeconds = when (delayVal) {
+            is Long -> delayVal.toInt()
+            is Int -> delayVal
+            is Number -> delayVal.toInt()
+            is String -> delayVal.toIntOrNull() ?: 5
+            else -> 5
+        }
+        
+        greetingAudioPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
+        goodbyeAudioPath = prefs.getString("flutter.goodbye_audio_path", "") ?: ""
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        loadPrefs()
         startForeground(NOTIFICATION_ID, buildNotification())
 
         when (intent?.action) {
@@ -119,7 +140,17 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         clientPackageName: String,
         clientUid: Int,
         rootHints: Bundle?
-    ): BrowserRoot = BrowserRoot("hicar_root", null)
+    ): BrowserRoot {
+        loadPrefs()
+        if (connectionMode == "phone_android_auto" && clientPackageName.contains("gearhead")) {
+            handler.post {
+                if (greetingAudioPath.isNotEmpty()) {
+                    playAudio(greetingAudioPath)
+                }
+            }
+        }
+        return BrowserRoot("hicar_root", null)
+    }
 
     override fun onLoadChildren(
         parentId: String,

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/audio_model.dart';
 import '../data/repositories/audio_repository.dart';
 import '../data/services/sync_service.dart';
@@ -205,13 +206,19 @@ class AudioProvider extends ChangeNotifier {
     final greetingPath = await AudioRepository.instance.getGreetingAudioPath();
     final goodbyePath = await AudioRepository.instance.getGoodbyeAudioPath();
 
+    final prefs = await SharedPreferences.getInstance();
     if (greetingPath != null) {
+      await prefs.setString('greeting_audio_path', greetingPath);
       await ServiceChannel.instance.playGreeting(audioPath: greetingPath);
       await ServiceChannel.instance.stopAudio();
+    } else {
+      await prefs.remove('greeting_audio_path');
     }
+    
     if (goodbyePath != null) {
-      // Store paths in native service companion
-      // Just start/stop to register paths
+      await prefs.setString('goodbye_audio_path', goodbyePath);
+    } else {
+      await prefs.remove('goodbye_audio_path');
     }
   }
 

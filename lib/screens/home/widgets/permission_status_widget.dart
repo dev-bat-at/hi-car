@@ -4,19 +4,75 @@ import 'package:provider/provider.dart';
 import '../../../core/app_colors.dart';
 import '../../../providers/permission_provider.dart';
 import '../../../providers/overlay_provider.dart';
+import '../../../providers/settings_provider.dart';
 
 class PermissionStatusWidget extends StatelessWidget {
   const PermissionStatusWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    final mode = settings.connectionMode;
+
     return Consumer2<PermissionProvider, OverlayProvider>(
       builder: (context, permissionProvider, overlayProvider, _) {
         final btGranted = permissionProvider.status.bluetoothConnect;
         final notifGranted = permissionProvider.status.notification;
         final overlayGranted = overlayProvider.hasPermission;
+        final batteryGranted = permissionProvider.status.batteryOptimization;
 
-        final allGranted = btGranted && notifGranted && overlayGranted;
+        final allGranted = permissionProvider.status.isGrantedForMode(mode);
+
+        final permissionList = <Widget>[];
+
+        if (mode == 'phone_bluetooth') {
+          permissionList.add(
+            _PermissionRow(
+              label: 'Quyền Bluetooth Connect (Tự nhận diện xe)',
+              isGranted: btGranted,
+              onTap: () => permissionProvider.requestBluetoothPermissions(),
+            ),
+          );
+        }
+
+        if (mode == 'phone_bluetooth' || mode == 'phone_android_auto' || mode == 'android_screen_box') {
+          if (permissionList.isNotEmpty) {
+            permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+          }
+          permissionList.add(
+            _PermissionRow(
+              label: 'Quyền Thông báo (Chạy nền không bị kill)',
+              isGranted: notifGranted,
+              onTap: () => permissionProvider.requestNotificationPermission(),
+            ),
+          );
+        }
+
+        if (mode == 'phone_bluetooth' || mode == 'phone_android_auto' || mode == 'android_screen_box') {
+          if (permissionList.isNotEmpty) {
+            permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+          }
+          permissionList.add(
+            _PermissionRow(
+              label: 'Quyền hiển thị trên ứng dụng khác (Overlay, dùng cho bong bóng nổi)',
+              isGranted: overlayGranted,
+              onTap: () => overlayProvider.requestPermission(),
+            ),
+          );
+        }
+
+        if (mode == 'android_screen_box') {
+          if (permissionList.isNotEmpty) {
+            permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+          }
+          permissionList.add(
+            _PermissionRow(
+              label: 'Quyền chạy ẩn không tối ưu pin (Ignore Battery)',
+              isGranted: batteryGranted,
+              onTap: () => permissionProvider.requestBatteryOptimizationPermission(),
+            ),
+          );
+        }
 
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 20.w),
@@ -42,7 +98,7 @@ class PermissionStatusWidget extends StatelessWidget {
                   ),
                   SizedBox(width: 10.w),
                   Text(
-                    allGranted ? 'Hệ thống đã sẵn sàng' : 'Cần cấp quyền hoạt động',
+                    allGranted ? 'Hệ thống đã sẵn sàng' : 'Cần cấp quyền hoạt động chính',
                     style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 14.sp,
@@ -52,23 +108,15 @@ class PermissionStatusWidget extends StatelessWidget {
                 ],
               ),
               SizedBox(height: 12.h),
-              _PermissionRow(
-                label: 'Quyền Bluetooth Connect (Tự nhận diện xe)',
-                isGranted: btGranted,
-                onTap: () => permissionProvider.requestBluetoothPermissions(),
+              Text(
+                'Overlay là quyền phụ, chỉ cần nếu muốn dùng bong bóng nổi.',
+                style: TextStyle(
+                  color: AppColors.textHint,
+                  fontSize: 11.sp,
+                ),
               ),
-              Divider(color: AppColors.divider, height: 16.h),
-              _PermissionRow(
-                label: 'Quyền Thông báo (Chạy nền không bị kill)',
-                isGranted: notifGranted,
-                onTap: () => permissionProvider.requestNotificationPermission(),
-              ),
-              Divider(color: AppColors.divider, height: 16.h),
-              _PermissionRow(
-                label: 'Quyền hiển thị trên ứng dụng khác (Overlay)',
-                isGranted: overlayGranted,
-                onTap: () => overlayProvider.requestPermission(),
-              ),
+              SizedBox(height: 12.h),
+              ...permissionList,
             ],
           ),
         );

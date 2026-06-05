@@ -26,7 +26,7 @@
 
         <!-- ===== MAIN ACTIVITY ===== -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.hicar.ora.limited.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -45,7 +45,7 @@
 
         <!-- ===== BOOT RECEIVER ===== -->
         <receiver
-            android:name=".BootReceiver"
+            android:name="com.hicar.ora.limited.BootReceiver"
             android:exported="true"
             android:enabled="true">
             <intent-filter>
@@ -57,7 +57,7 @@
 
         <!-- ===== BLUETOOTH RECEIVER ===== -->
         <receiver
-            android:name=".BluetoothReceiver"
+            android:name="com.hicar.ora.limited.BluetoothReceiver"
             android:exported="true"
             android:enabled="true">
             <intent-filter>
@@ -68,7 +68,7 @@
 
         <!-- ===== AUDIO FOREGROUND SERVICE (MediaBrowserService for Android Auto) ===== -->
         <service
-            android:name=".AudioForegroundService"
+            android:name="com.hicar.ora.limited.AudioForegroundService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback"
             android:stopWithTask="false">

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 class PermissionStatus {
   final bool bluetooth;
@@ -18,21 +19,37 @@ class PermissionStatus {
     this.batteryOptimization = false,
   });
 
-  bool get allGranted =>
-      bluetoothConnect && notification;
+  bool isGrantedForMode(String mode) {
+    if (mode == 'phone_bluetooth') {
+      return bluetoothConnect && notification;
+    } else if (mode == 'phone_android_auto') {
+      return notification;
+    } else if (mode == 'android_screen_box') {
+      return notification && batteryOptimization;
+    }
+    return false;
+  }
 
-  int get grantedCount {
+  int getGrantedCountForMode(String mode) {
     int count = 0;
-    if (bluetooth) count++;
-    if (bluetoothScan) count++;
-    if (bluetoothConnect) count++;
-    if (notification) count++;
-    if (overlay) count++;
-    if (batteryOptimization) count++;
+    if (mode == 'phone_bluetooth') {
+      if (bluetoothConnect) count++;
+      if (notification) count++;
+    } else if (mode == 'phone_android_auto') {
+      if (notification) count++;
+    } else if (mode == 'android_screen_box') {
+      if (notification) count++;
+      if (batteryOptimization) count++;
+    }
     return count;
   }
 
-  int get totalCount => 6;
+  int getTotalCountForMode(String mode) {
+    if (mode == 'phone_bluetooth') return 2;
+    if (mode == 'phone_android_auto') return 1;
+    if (mode == 'android_screen_box') return 2;
+    return 0;
+  }
 }
 
 class PermissionProvider extends ChangeNotifier {
@@ -41,7 +58,6 @@ class PermissionProvider extends ChangeNotifier {
 
   PermissionStatus get status => _status;
   bool get isChecking => _isChecking;
-  bool get allGranted => _status.allGranted;
 
   Future<void> checkAllPermissions() async {
     _isChecking = true;
@@ -52,14 +68,16 @@ class PermissionProvider extends ChangeNotifier {
       final btScanStatus = await Permission.bluetoothScan.status;
       final btConnectStatus = await Permission.bluetoothConnect.status;
       final notifStatus = await Permission.notification.status;
+      final overlayGranted = await FlutterOverlayWindow.isPermissionGranted();
+      final batteryGranted = await Permission.ignoreBatteryOptimizations.isGranted;
 
       _status = PermissionStatus(
         bluetooth: btStatus.isGranted,
         bluetoothScan: btScanStatus.isGranted,
         bluetoothConnect: btConnectStatus.isGranted,
         notification: notifStatus.isGranted,
-        overlay: false, // checked separately via flutter_overlay_window
-        batteryOptimization: false, // checked separately
+        overlay: overlayGranted,
+        batteryOptimization: batteryGranted,
       );
     } catch (_) {}
 
@@ -85,13 +103,41 @@ class PermissionProvider extends ChangeNotifier {
     return result.isGranted;
   }
 
-  Future<void> requestAllPermissions() async {
-    await [
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.notification,
-    ].request();
+  Future<bool> requestOverlayPermission() async {
+    await FlutterOverlayWindow.requestPermission();
+    await checkAllPermissions();
+    return _status.overlay;
+  }
+
+  Future<bool> requestBatteryOptimizationPermission() async {
+    final result = await Permission.ignoreBatteryOptimizations.request();
+    await checkAllPermissions();
+    return result.isGranted;
+  }
+
+  Future<void> requestAllPermissionsForMode(String mode) async {
+    if (mode == 'phone_bluetooth') {
+      await [
+        Permission.bluetooth,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.notification,
+      ].request();
+      if (!_status.overlay) {
+        await FlutterOverlayWindow.requestPermission();
+      }
+    } else if (mode == 'phone_android_auto') {
+      await Permission.notification.request();
+      if (!_status.overlay) {
+        await FlutterOverlayWindow.requestPermission();
+      }
+    } else if (mode == 'android_screen_box') {
+      await Permission.notification.request();
+      await Permission.ignoreBatteryOptimizations.request();
+      if (!_status.overlay) {
+        await FlutterOverlayWindow.requestPermission();
+      }
+    }
     await checkAllPermissions();
   }
 

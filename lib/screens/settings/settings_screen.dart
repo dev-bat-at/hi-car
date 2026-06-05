@@ -44,33 +44,54 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => context.push('/gen-audio'),
               ),
 
+              _buildSectionTitle('CHẾ ĐỘ KẾT NỐI XE'),
+
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                child: Column(
+                  children: [
+                    _buildModeCard(
+                      context,
+                      mode: 'phone_bluetooth',
+                      title: 'Điện thoại + Bluetooth',
+                      description: 'Tự động phát lời chào khi điện thoại kết nối Bluetooth với xe.',
+                      icon: Icons.bluetooth_rounded,
+                      activeMode: settings.connectionMode,
+                      onTap: () => settings.setConnectionMode('phone_bluetooth'),
+                    ),
+                    SizedBox(height: 10.h),
+                    _buildModeCard(
+                      context,
+                      mode: 'phone_android_auto',
+                      title: 'Điện thoại + Android Auto',
+                      description: 'Chỉ tự động phát khi xe kích hoạt màn hình Android Auto.',
+                      icon: Icons.directions_car_filled_rounded,
+                      activeMode: settings.connectionMode,
+                      onTap: () => settings.setConnectionMode('phone_android_auto'),
+                    ),
+                    SizedBox(height: 10.h),
+                    _buildModeCard(
+                      context,
+                      mode: 'android_screen_box',
+                      title: 'Màn Android độ / Android Box',
+                      description: 'Chạy trực tiếp trên màn hình xe hoặc tự động chạy ngầm trên Box khi nổ máy.',
+                      icon: Icons.developer_board_rounded,
+                      activeMode: settings.connectionMode,
+                      onTap: () => settings.setConnectionMode('android_screen_box'),
+                    ),
+                  ],
+                ),
+              ),
+
               _buildSectionTitle('CẤU HÌNH TỰ ĐỘNG PHÁT'),
 
               _SettingsSwitchTile(
                 icon: Icons.power_rounded,
                 iconColor: const Color(0xFF00E676),
                 title: 'Tự động phát lời chào',
-                subtitle: 'Kích hoạt khi phát hiện xe khởi động',
+                subtitle: 'Kích hoạt phát âm thanh tự động theo chế độ kết nối',
                 value: settings.autoPlayEnabled,
                 onChanged: (val) => settings.setAutoPlay(val),
-              ),
-
-              _SettingsSwitchTile(
-                icon: Icons.bluetooth_searching_rounded,
-                iconColor: Colors.blueAccent,
-                title: 'Bluetooth Auto-run',
-                subtitle: 'Kết nối bluetooth xe tự động chạy nền',
-                value: settings.bluetoothAutoPlay,
-                onChanged: (val) => settings.setBluetoothAutoPlay(val),
-              ),
-
-              _SettingsSwitchTile(
-                icon: Icons.directions_car_filled_rounded,
-                iconColor: Colors.amber,
-                title: 'Android Auto Integration',
-                subtitle: 'Ưu tiên kết nối Android Auto hơn Bluetooth',
-                value: settings.androidAutoEnabled,
-                onChanged: (val) => settings.setAndroidAutoEnabled(val),
               ),
 
               _buildSectionTitle('HỖ TRỢ & TÀI KHOẢN'),
@@ -127,6 +148,88 @@ class SettingsScreen extends StatelessWidget {
           fontSize: 11.sp,
           fontWeight: FontWeight.bold,
           letterSpacing: 1.0,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeCard(
+    BuildContext context, {
+    required String mode,
+    required String title,
+    required String description,
+    required IconData icon,
+    required String activeMode,
+    required VoidCallback onTap,
+  }) {
+    final isSelected = mode == activeMode;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(12.w),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.card,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: 1.5.w,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.15),
+                    blurRadius: 10.r,
+                    spreadRadius: 1.w,
+                  )
+                ]
+              : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primary.withOpacity(0.15) : AppColors.background.withOpacity(0.4),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                size: 22.sp,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 10.5.sp,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.primary,
+                size: 18.sp,
+              ),
+          ],
         ),
       ),
     );

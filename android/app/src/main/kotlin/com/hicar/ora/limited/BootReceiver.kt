@@ -15,8 +15,15 @@ class BootReceiver : BroadcastReceiver() {
         )
 
         if (intent.action in validActions) {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
+
             val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
-                action = AudioForegroundService.ACTION_START
+                action = if (connectionMode == "android_screen_box") {
+                    AudioForegroundService.ACTION_PLAY_GREETING
+                } else {
+                    AudioForegroundService.ACTION_START
+                }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
