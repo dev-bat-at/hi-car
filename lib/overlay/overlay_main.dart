@@ -60,6 +60,7 @@ class _OverlayBubbleState extends State<OverlayBubble>
   bool _expanded = false;
   bool _bubbleOnLeft = true;
   bool _isTransitioning = false;
+  Offset _compactPosition = const Offset(_edgePadding, 180.0);
   Offset _windowPosition = const Offset(_edgePadding, 180.0);
 
   late final AnimationController _animController;
@@ -70,11 +71,12 @@ class _OverlayBubbleState extends State<OverlayBubble>
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 160),
+      duration: const Duration(milliseconds: 220),
     );
     _expandAnim = CurvedAnimation(
       parent: _animController,
-      curve: Curves.easeOutCubic,
+      curve: Curves.easeOutQuart,
+      reverseCurve: Curves.easeInQuart,
     );
     _initOverlaySize();
   }
@@ -108,11 +110,12 @@ class _OverlayBubbleState extends State<OverlayBubble>
 
   Future<void> _initOverlaySize() async {
     await _syncWindowPosition(
-      width: _compactSize,
-      height: _compactSize,
+      width: _expandedWidth,
+      height: _expandedHeight,
       useFallback: true,
     );
-    await _applyCompactWindow();
+    _setDockFromWindowPosition();
+    await _applyFixedWindow();
   }
 
   Future<void> _syncWindowPosition({
@@ -136,10 +139,10 @@ class _OverlayBubbleState extends State<OverlayBubble>
   }
 
   Offset _clampPosition(Offset position, double width, double height) {
-    final maxX =
-        (_screenWidth - width - _edgePadding).clamp(_edgePadding, double.infinity);
-    final maxY =
-        (_screenHeight - height - _bottomPadding).clamp(_topPadding, double.infinity);
+    final maxX = (_screenWidth - width - _edgePadding)
+        .clamp(_edgePadding, double.infinity);
+    final maxY = (_screenHeight - height - _bottomPadding)
+        .clamp(_topPadding, double.infinity);
     return Offset(
       position.dx.clamp(_edgePadding, maxX),
       position.dy.clamp(_topPadding, maxY),
@@ -166,16 +169,41 @@ class _OverlayBubbleState extends State<OverlayBubble>
     );
   }
 
-  Future<void> _applyCompactWindow() async {
+  void _setDockFromWindowPosition() {
+    _bubbleOnLeft =
+        _windowPosition.dx + (_expandedWidth / 2) < _screenWidth / 2;
+    _compactPosition = _snapCompactPosition(
+      Offset(
+        _bubbleOnLeft
+            ? _windowPosition.dx
+            : _windowPosition.dx + (_expandedWidth - _compactSize),
+        _windowPosition.dy,
+      ),
+    );
+    _windowPosition = _expandedWindowPositionFor(_compactPosition);
+  }
+
+  Offset _expandedWindowPositionFor(Offset compactPosition) {
+    final expandedX = _bubbleOnLeft
+        ? compactPosition.dx
+        : compactPosition.dx - (_expandedWidth - _compactSize);
+    return _clampPosition(
+      Offset(expandedX, compactPosition.dy),
+      _expandedWidth,
+      _expandedHeight,
+    );
+  }
+
+  Future<void> _applyFixedWindow() async {
     try {
-      await FlutterOverlayWindow.resizeOverlay(
-        _toOverlayUnit(_compactSize),
-        _toOverlayUnit(_compactSize),
-        true,
-      );
       await _moveOverlay(_windowPosition);
+      await FlutterOverlayWindow.resizeOverlay(
+        _toOverlayUnit(_expandedWidth),
+        _toOverlayUnit(_expandedHeight),
+        false,
+      );
     } catch (e) {
-      debugPrint('Overlay compact resize failed: $e');
+      debugPrint('Overlay fixed window resize failed: $e');
     }
   }
 
@@ -183,40 +211,13 @@ class _OverlayBubbleState extends State<OverlayBubble>
     if (_isTransitioning) return;
     _isTransitioning = true;
 
-    await _syncWindowPosition(
-      width: _compactSize,
-      height: _compactSize,
-      useFallback: true,
-    );
-
-    final compactPosition = _snapCompactPosition(_windowPosition);
-    _bubbleOnLeft = compactPosition.dx + (_compactSize / 2) < _screenWidth / 2;
-
-    final expandedX = _bubbleOnLeft
-        ? compactPosition.dx
-        : compactPosition.dx - (_expandedWidth - _compactSize);
-    final expandedY = compactPosition.dy;
-
-    _windowPosition = _clampPosition(
-      Offset(expandedX, expandedY),
-      _expandedWidth,
-      _expandedHeight,
-    );
-
     try {
-      await FlutterOverlayWindow.resizeOverlay(
-        _toOverlayUnit(_expandedWidth),
-        _toOverlayUnit(_expandedHeight),
-        true,
-      );
-      await _moveOverlay(_windowPosition);
       if (mounted) {
         setState(() => _expanded = true);
       }
       await _animController.forward(from: 0);
     } catch (e) {
       debugPrint('Overlay expand failed: $e');
-      await _applyCompactWindow();
     } finally {
       _isTransitioning = false;
     }
@@ -226,27 +227,13 @@ class _OverlayBubbleState extends State<OverlayBubble>
     if (_isTransitioning) return;
     _isTransitioning = true;
 
-    await _syncWindowPosition(
-      width: _expandedWidth,
-      height: _expandedHeight,
-    );
-
     try {
       await _animController.reverse();
     } catch (_) {}
 
-    final compactX = _bubbleOnLeft
-        ? _windowPosition.dx
-        : _windowPosition.dx + (_expandedWidth - _compactSize);
-    final compactY = _windowPosition.dy;
-
-    _windowPosition = _snapCompactPosition(Offset(compactX, compactY));
-
     if (mounted) {
       setState(() => _expanded = false);
     }
-
-    await _applyCompactWindow();
     _isTransitioning = false;
   }
 
@@ -273,25 +260,10 @@ class _OverlayBubbleState extends State<OverlayBubble>
 
   @override
   Widget build(BuildContext context) {
-    if (!_expanded) {
-      return Material(
-        color: Colors.transparent,
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: _toggleExpand,
-          child: const Center(
-            child: _BubbleShell(isExpanded: false),
-          ),
-        ),
-      );
-    }
-
     return Material(
       color: Colors.transparent,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTap: _collapseOverlay,
-        onPanStart: (_) => _collapseOverlay(),
         child: SizedBox(
           width: _expandedWidth,
           height: _expandedHeight,
@@ -302,15 +274,16 @@ class _OverlayBubbleState extends State<OverlayBubble>
                 top: _panelTopInset,
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTap: _collapseOverlay,
-                  child: const _BubbleShell(isExpanded: true),
+                  onTap: _toggleExpand,
+                  child: _BubbleShell(isExpanded: _expanded),
                 ),
               ),
-              Positioned(
-                left: _bubbleOnLeft ? 62.0 : 0.0,
-                top: _panelTopInset,
-                child: _buildMenuCard(),
-              ),
+              if (_expanded)
+                Positioned(
+                  left: _bubbleOnLeft ? 62.0 : 0.0,
+                  top: _panelTopInset,
+                  child: _buildMenuCard(),
+                ),
             ],
           ),
         ),
@@ -319,117 +292,114 @@ class _OverlayBubbleState extends State<OverlayBubble>
   }
 
   Widget _buildMenuCard() {
-    return ScaleTransition(
-      scale: _expandAnim,
-      child: FadeTransition(
-        opacity: _expandAnim,
-        child: Container(
-          width: 206.0,
-          height: 190.0,
-          padding: const EdgeInsets.all(12.0),
-          decoration: BoxDecoration(
-            color: _bg.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(18.0),
-            border: Border.all(
-              color: _cyan.withValues(alpha: 0.35),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: _cyan.withValues(alpha: 0.16),
-                blurRadius: 12.0,
-                spreadRadius: 1.0,
-              ),
-            ],
+    return FadeTransition(
+      opacity: _expandAnim,
+      child: Container(
+        width: 206.0,
+        height: 190.0,
+        padding: const EdgeInsets.all(12.0),
+        decoration: BoxDecoration(
+          color: _bg.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(18.0),
+          border: Border.all(
+            color: _cyan.withValues(alpha: 0.35),
+            width: 1.2,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 5.0,
-                    height: 14.0,
-                    decoration: BoxDecoration(
-                      color: _cyan,
-                      borderRadius: BorderRadius.circular(3.0),
-                    ),
-                  ),
-                  const SizedBox(width: 8.0),
-                  const Expanded(
-                    child: Text(
-                      'GIỌNG THƯƠNG GIA',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _collapseOverlay,
-                    child: Container(
-                      width: 26.0,
-                      height: 26.0,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: 16.0,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10.0),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildMenuItem(
-                        icon: Icons.waving_hand_rounded,
-                        label: 'Phat loi chao',
-                        color: _cyan,
-                        onTap: () => _sendAction('play_greeting'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.directions_car_rounded,
-                        label: 'Phat tam biet',
-                        color: const Color(0xFF00E676),
-                        onTap: () => _sendAction('play_goodbye'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.stop_circle_rounded,
-                        label: 'Dung am thanh',
-                        color: _red,
-                        onTap: () => _sendAction('stop_audio'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.open_in_new_rounded,
-                        label: 'Mo ung dung',
-                        color: Colors.white,
-                        onTap: () => _sendAction('open_app'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.visibility_off_rounded,
-                        label: 'An bong bong',
-                        color: const Color(0xFFFFB74D),
-                        onTap: _hideOverlay,
-                      ),
-                    ],
+          boxShadow: [
+            BoxShadow(
+              color: _cyan.withValues(alpha: 0.16),
+              blurRadius: 12.0,
+              spreadRadius: 1.0,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 5.0,
+                  height: 14.0,
+                  decoration: BoxDecoration(
+                    color: _cyan,
+                    borderRadius: BorderRadius.circular(3.0),
                   ),
                 ),
+                const SizedBox(width: 8.0),
+                const Expanded(
+                  child: Text(
+                    'GIỌNG THƯƠNG GIA',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.0,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _collapseOverlay,
+                  child: Container(
+                    width: 26.0,
+                    height: 26.0,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 16.0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10.0),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildMenuItem(
+                      icon: Icons.waving_hand_rounded,
+                      label: 'Phat loi chao',
+                      color: _cyan,
+                      onTap: () => _sendAction('play_greeting'),
+                    ),
+                    const SizedBox(height: 6.0),
+                    _buildMenuItem(
+                      icon: Icons.directions_car_rounded,
+                      label: 'Phat tam biet',
+                      color: const Color(0xFF00E676),
+                      onTap: () => _sendAction('play_goodbye'),
+                    ),
+                    const SizedBox(height: 6.0),
+                    _buildMenuItem(
+                      icon: Icons.stop_circle_rounded,
+                      label: 'Dung am thanh',
+                      color: _red,
+                      onTap: () => _sendAction('stop_audio'),
+                    ),
+                    const SizedBox(height: 6.0),
+                    _buildMenuItem(
+                      icon: Icons.open_in_new_rounded,
+                      label: 'Mo ung dung',
+                      color: Colors.white,
+                      onTap: () => _sendAction('open_app'),
+                    ),
+                    const SizedBox(height: 6.0),
+                    _buildMenuItem(
+                      icon: Icons.visibility_off_rounded,
+                      label: 'An bong bong',
+                      color: const Color(0xFFFFB74D),
+                      onTap: _hideOverlay,
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -492,8 +462,8 @@ class _BubbleShell extends StatelessWidget {
       height: 84.0,
       child: Center(
         child: Container(
-          width: 62.0,
-          height: 62.0,
+          width: 74.0,
+          height: 74.0,
           decoration: BoxDecoration(
             color: _bg.withValues(alpha: 0.96),
             shape: BoxShape.circle,
@@ -511,8 +481,8 @@ class _BubbleShell extends StatelessWidget {
           ),
           child: Center(
             child: Container(
-              width: 50.0,
-              height: 50.0,
+              width: 60.0,
+              height: 60.0,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
@@ -524,7 +494,7 @@ class _BubbleShell extends StatelessWidget {
               child: Icon(
                 isExpanded ? Icons.close_rounded : Icons.volume_up_rounded,
                 color: Colors.black,
-                size: 24.0,
+                size: 28.0,
               ),
             ),
           ),
