@@ -10,6 +10,7 @@ class BluetoothProvider extends ChangeNotifier {
   int _delaySeconds = AppConstants.defaultDelaySeconds;
   bool _isLoading = false;
   String? _error;
+  final Map<String, bool> _connectingDevices = {};
 
   List<BluetoothDeviceModel> get pairedDevices => _pairedDevices;
   BluetoothDeviceModel? get targetDevice => _targetDevice;
@@ -17,11 +18,17 @@ class BluetoothProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasTargetDevice => _targetDevice != null;
+  Map<String, bool> get connectingDevices => _connectingDevices;
 
   // ===== Init =====
 
   Future<void> init() async {
     await _loadSavedTarget();
+    
+    // Register listener for native connection status updates
+    BluetoothChannel.instance.setConnectionChangeHandler((address, action) async {
+      await loadPairedDevices();
+    });
   }
 
   // ===== Load Paired Devices =====
@@ -45,6 +52,34 @@ class BluetoothProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  // ===== Toggle Connection =====
+
+  Future<void> toggleDeviceConnection(BluetoothDeviceModel device) async {
+    final address = device.address;
+    if (_connectingDevices[address] == true) return;
+
+    _connectingDevices[address] = true;
+    notifyListeners();
+
+    try {
+      if (device.isConnected) {
+        await BluetoothChannel.instance.disconnectDevice(address);
+      } else {
+        // Automatically mark as target device when attempting connection
+        await setTargetDevice(device);
+        await BluetoothChannel.instance.connectDevice(address);
+      }
+      
+      // Let it process for a bit, then refresh paired list status
+      await Future.delayed(const Duration(milliseconds: 1000));
+      await loadPairedDevices();
+    } catch (_) {
+    } finally {
+      _connectingDevices.remove(address);
+      notifyListeners();
+    }
   }
 
   // ===== Set Target Device =====

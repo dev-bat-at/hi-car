@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
+import '../native/bluetooth_channel.dart';
 
 class SettingsProvider extends ChangeNotifier {
   bool _autoPlayEnabled = true;
@@ -8,12 +9,14 @@ class SettingsProvider extends ChangeNotifier {
   bool _bluetoothAutoPlay = true;
   bool _androidAutoEnabled = true;
   bool _showNotification = true;
+  String _connectionMode = 'phone_bluetooth'; // 'phone_bluetooth', 'phone_android_auto', 'android_screen_box'
 
   bool get autoPlayEnabled => _autoPlayEnabled;
   int get delaySeconds => _delaySeconds;
   bool get bluetoothAutoPlay => _bluetoothAutoPlay;
   bool get androidAutoEnabled => _androidAutoEnabled;
   bool get showNotification => _showNotification;
+  String get connectionMode => _connectionMode;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -23,6 +26,10 @@ class SettingsProvider extends ChangeNotifier {
     _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
     _androidAutoEnabled = prefs.getBool('android_auto_enabled') ?? true;
     _showNotification = prefs.getBool('show_notification') ?? true;
+    _connectionMode = prefs.getString('connection_mode') ?? 'phone_bluetooth';
+    
+    // Sync connection mode with native on startup
+    await BluetoothChannel.instance.setConnectionMode(_connectionMode);
     notifyListeners();
   }
 
@@ -58,6 +65,14 @@ class SettingsProvider extends ChangeNotifier {
     _showNotification = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('show_notification', value);
+    notifyListeners();
+  }
+
+  Future<void> setConnectionMode(String mode) async {
+    _connectionMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('connection_mode', mode);
+    await BluetoothChannel.instance.setConnectionMode(mode);
     notifyListeners();
   }
 }

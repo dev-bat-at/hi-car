@@ -29,6 +29,7 @@ class BluetoothDeviceModel {
     return BluetoothDeviceModel(
       name: map['name'] as String? ?? 'Unknown',
       address: map['address'] as String? ?? '',
+      isConnected: map['isConnected'] as bool? ?? false,
     );
   }
 

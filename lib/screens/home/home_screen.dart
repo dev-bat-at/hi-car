@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:hi_car/providers/permission_provider.dart';
+import 'package:hi_car/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
@@ -39,10 +40,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final overlayProvider = context.read<OverlayProvider>();
+    final settings = context.read<SettingsProvider>();
+    final audioProvider = context.read<AudioProvider>();
+
     if (state == AppLifecycleState.resumed) {
       _checkAll();
       // Hide bubble when user opens the app
       overlayProvider.hideOverlay();
+
+      // For Android Screen/Box mode, auto-play greeting on screen/app resume
+      if (settings.connectionMode == 'android_screen_box' && settings.autoPlayEnabled) {
+        audioProvider.playGreetingViaNative();
+      }
     } else if (state == AppLifecycleState.paused) {
       // Show bubble when user goes home or backs out
       overlayProvider.showOverlay();
@@ -52,7 +61,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _checkAll() {
     if (mounted) {
       context.read<PermissionProvider>().checkAllPermissions();
-      context.read<OverlayProvider>().checkPermission();
+      final overlayProvider = context.read<OverlayProvider>();
+      overlayProvider.checkPermission();
+      overlayProvider.syncOverlayState();
     }
   }
 
@@ -61,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final authProvider = context.watch<AuthProvider>();
     final audioProvider = context.watch<AudioProvider>();
     final overlayProvider = context.watch<OverlayProvider>();
+    final settingsProvider = context.watch<SettingsProvider>();
 
     final user = authProvider.user;
 
@@ -127,15 +139,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                 SizedBox(height: 16.h),
 
+                const _OverlayDebugCard(),
+
+                SizedBox(height: 16.h),
+
                 // Permission status panel
                 const PermissionStatusWidget(),
 
-                SizedBox(height: 16.h),
-
                 // Bluetooth auto-play trigger config panel
-                const BluetoothPanelWidget(),
-
-                SizedBox(height: 16.h),
+                if (settingsProvider.connectionMode != 'android_screen_box') ...[
+                  const BluetoothPanelWidget(),
+                  SizedBox(height: 16.h),
+                ],
 
                 // Audio controller buttons
                 const PlaybackControllerWidget(),
@@ -273,6 +288,8 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEnabled = overlayProvider.isBubbleEnabled;
+    final hasPermission = overlayProvider.hasPermission;
+    final isShowing = overlayProvider.isOverlayShowing;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 20.w),
@@ -282,57 +299,189 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16.r),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 40.w,
-            height: 40.w,
-            decoration: BoxDecoration(
-              color: isEnabled
-                  ? AppColors.primary.withOpacity(0.15)
-                  : AppColors.textHint.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10.r),
-            ),
-            child: Icon(
-              Icons.widgets_rounded,
-              color: isEnabled ? AppColors.primary : AppColors.textHint,
-              size: 20.sp,
-            ),
-          ),
-          SizedBox(width: 14.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Bong bóng trợ lý xe (Overlay)',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
+          Row(
+            children: [
+              Container(
+                width: 40.w,
+                height: 40.w,
+                decoration: BoxDecoration(
+                  color: isEnabled
+                      ? AppColors.primary.withOpacity(0.15)
+                      : AppColors.textHint.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10.r),
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  isEnabled
-                      ? 'Đang bật (tự động hiện khi thoát app)'
-                      : 'Đang tắt hoàn toàn',
-                  style: TextStyle(
-                    color: isEnabled ? AppColors.primary : AppColors.textHint,
-                    fontSize: 11.sp,
-                  ),
+                child: Icon(
+                  Icons.widgets_rounded,
+                  color: isEnabled ? AppColors.primary : AppColors.textHint,
+                  size: 20.sp,
                 ),
-              ],
+              ),
+              SizedBox(width: 14.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bong bóng trợ lý xe (Overlay)',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      isEnabled
+                          ? (!hasPermission
+                              ? 'Đã bật nhưng còn thiếu quyền hiển thị nổi'
+                              : (isShowing
+                                  ? 'Đang hiển thị trên màn hình'
+                                  : 'Đã bật, có thể hiện lại ngay trong app'))
+                          : 'Đang tắt hoàn toàn',
+                      style: TextStyle(
+                        color: isEnabled && hasPermission
+                            ? AppColors.primary
+                            : AppColors.textHint,
+                        fontSize: 11.sp,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: isEnabled,
+                onChanged: (value) async {
+                  final enabled = await overlayProvider.setBubbleEnabled(value);
+                  if (!context.mounted) return;
+                  if (value && !enabled) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cần cấp quyền hiển thị nổi để bật bong bóng trợ lý.'),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+          if (isEnabled) ...[
+            SizedBox(height: 12.h),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  if (!hasPermission) {
+                    final granted = await overlayProvider.requestPermission();
+                    if (!context.mounted) return;
+                    if (!granted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Bạn cần cấp quyền hiển thị nổi để dùng bong bóng trợ lý.'),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+
+                  if (isShowing) {
+                    await overlayProvider.hideOverlay();
+                  } else {
+                    await overlayProvider.showOverlay();
+                  }
+
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isShowing
+                            ? 'Đã ẩn bong bóng trợ lý.'
+                            : 'Đã hiện lại bong bóng trợ lý.',
+                      ),
+                    ),
+                  );
+                },
+                icon: Icon(
+                  isShowing ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                  size: 18.sp,
+                ),
+                label: Text(
+                  !hasPermission
+                      ? 'Cấp quyền bong bóng nổi'
+                      : (isShowing ? 'Ẩn bong bóng ngay' : 'Hiện lại bong bóng'),
+                ),
+              ),
             ),
-          ),
-          Switch(
-            value: isEnabled,
-            onChanged: (value) async {
-              await overlayProvider.setBubbleEnabled(value);
-            },
-          ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+class _OverlayDebugCard extends StatelessWidget {
+  const _OverlayDebugCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<String?>(
+      valueListenable: OverlayDebugStore.notifier,
+      builder: (context, message, _) {
+        if (message == null || message.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          margin: EdgeInsets.symmetric(horizontal: 20.w),
+          padding: EdgeInsets.all(14.w),
+          decoration: BoxDecoration(
+            color: AppColors.error.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(
+              color: AppColors.error.withOpacity(0.35),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.bug_report_rounded,
+                    color: AppColors.error,
+                    size: 18.sp,
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      'Lỗi bong bóng nổi',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => OverlayDebugStore.clear(),
+                    child: const Text('Ẩn'),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                message,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11.sp,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -2,6 +2,7 @@ package com.hicar.ora.limited
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -13,7 +14,7 @@ class BluetoothReceiver : BroadcastReceiver() {
         /**
          * Returns list of paired Bluetooth devices as maps for Flutter MethodChannel.
          */
-        fun getPairedDevices(context: Context): List<Map<String, String>> {
+        fun getPairedDevices(context: Context): List<Map<String, Any>> {
             return try {
                 val bluetoothManager =
                     context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -21,12 +22,129 @@ class BluetoothReceiver : BroadcastReceiver() {
                 adapter.bondedDevices?.map { device ->
                     mapOf(
                         "name" to (device.name ?: "Unknown Device"),
-                        "address" to device.address
+                        "address" to device.address,
+                        "isConnected" to isDeviceConnected(device)
                     )
                 } ?: emptyList()
             } catch (e: SecurityException) {
                 emptyList()
             }
+        }
+
+        /**
+         * Check if a classic Bluetooth device is connected using reflection.
+         */
+        private fun isDeviceConnected(device: BluetoothDevice): Boolean {
+            return try {
+                val method = device.javaClass.getMethod("isConnected")
+                method.invoke(device) as? Boolean ?: false
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        /**
+         * Connect to A2DP and Headset profiles of a device using reflection.
+         */
+        fun connectDevice(context: Context, address: String, callback: (Boolean) -> Unit) {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: run {
+                callback(false)
+                return
+            }
+            val device = try {
+                adapter.getRemoteDevice(address)
+            } catch (e: Exception) {
+                null
+            }
+            if (device == null) {
+                callback(false)
+                return
+            }
+
+            // Connect A2DP (Music)
+            adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    try {
+                        val connectMethod = proxy.javaClass.getMethod("connect", BluetoothDevice::class.java)
+                        connectMethod.invoke(proxy, device)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        adapter.closeProfileProxy(BluetoothProfile.A2DP, proxy)
+                    }
+                }
+                override fun onServiceDisconnected(profile: Int) {}
+            }, BluetoothProfile.A2DP)
+
+            // Connect HEADSET (Calls)
+            adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    try {
+                        val connectMethod = proxy.javaClass.getMethod("connect", BluetoothDevice::class.java)
+                        connectMethod.invoke(proxy, device)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        adapter.closeProfileProxy(BluetoothProfile.HEADSET, proxy)
+                    }
+                }
+                override fun onServiceDisconnected(profile: Int) {}
+            }, BluetoothProfile.HEADSET)
+
+            callback(true)
+        }
+
+        /**
+         * Disconnect from A2DP and Headset profiles using reflection.
+         */
+        fun disconnectDevice(context: Context, address: String, callback: (Boolean) -> Unit) {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: run {
+                callback(false)
+                return
+            }
+            val device = try {
+                adapter.getRemoteDevice(address)
+            } catch (e: Exception) {
+                null
+            }
+            if (device == null) {
+                callback(false)
+                return
+            }
+
+            // Disconnect A2DP
+            adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    try {
+                        val disconnectMethod = proxy.javaClass.getMethod("disconnect", BluetoothDevice::class.java)
+                        disconnectMethod.invoke(proxy, device)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        adapter.closeProfileProxy(BluetoothProfile.A2DP, proxy)
+                    }
+                }
+                override fun onServiceDisconnected(profile: Int) {}
+            }, BluetoothProfile.A2DP)
+
+            // Disconnect HEADSET
+            adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    try {
+                        val disconnectMethod = proxy.javaClass.getMethod("disconnect", BluetoothDevice::class.java)
+                        disconnectMethod.invoke(proxy, device)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        adapter.closeProfileProxy(BluetoothProfile.HEADSET, proxy)
+                    }
+                }
+                override fun onServiceDisconnected(profile: Int) {}
+            }, BluetoothProfile.HEADSET)
+
+            callback(true)
         }
     }
 
@@ -41,10 +159,24 @@ class BluetoothReceiver : BroadcastReceiver() {
         val deviceAddress = device?.address ?: return
         val targetAddress = AudioForegroundService.targetDeviceAddress
 
+        // Read connectionMode from SharedPreferences to know if we are in phone_bluetooth mode
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
+
+        // Notify MainActivity (if active) so UI updates connection state instantly
+        MainActivity.instance?.let { activity ->
+            activity.runOnUiThread {
+                activity.bluetoothChannel?.invokeMethod("onDeviceConnectionChanged", mapOf(
+                    "address" to deviceAddress,
+                    "action" to intent.action
+                ))
+            }
+        }
+
         when (intent.action) {
             BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                // Only trigger if user selected this device
-                if (targetAddress.isNotEmpty() && deviceAddress == targetAddress) {
+                // Only trigger auto-play if we are in Phone + Bluetooth mode and device matches target address
+                if (connectionMode == "phone_bluetooth" && targetAddress.isNotEmpty() && deviceAddress == targetAddress) {
                     val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
                         action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
                         putExtra("deviceAddress", deviceAddress)

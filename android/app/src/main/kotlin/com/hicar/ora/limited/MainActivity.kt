@@ -11,10 +11,14 @@ class MainActivity : FlutterActivity() {
     companion object {
         const val SERVICE_CHANNEL = "com.hicar.ora.limited/service"
         const val BLUETOOTH_CHANNEL = "com.hicar.ora.limited/bluetooth"
+        @Volatile var instance: MainActivity? = null
     }
+
+    var bluetoothChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        instance = this
 
         // ===== SERVICE CHANNEL =====
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SERVICE_CHANNEL)
@@ -61,8 +65,8 @@ class MainActivity : FlutterActivity() {
             }
 
         // ===== BLUETOOTH CHANNEL =====
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BLUETOOTH_CHANNEL)
-            .setMethodCallHandler { call, result ->
+        bluetoothChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BLUETOOTH_CHANNEL)
+        bluetoothChannel?.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getPairedDevices" -> {
                         val devices = BluetoothReceiver.getPairedDevices(this)
@@ -79,9 +83,36 @@ class MainActivity : FlutterActivity() {
                         AudioForegroundService.targetDeviceAddress = ""
                         result.success(true)
                     }
+                    "connectDevice" -> {
+                        val address = call.argument<String>("address") ?: ""
+                        BluetoothReceiver.connectDevice(this, address) { success ->
+                            runOnUiThread { result.success(success) }
+                        }
+                    }
+                    "disconnectDevice" -> {
+                        val address = call.argument<String>("address") ?: ""
+                        BluetoothReceiver.disconnectDevice(this, address) { success ->
+                            runOnUiThread { result.success(success) }
+                        }
+                    }
+                    "setConnectionMode" -> {
+                        val mode = call.argument<String>("mode") ?: "phone_bluetooth"
+                        AudioForegroundService.connectionMode = mode
+
+                        // Save in Shared Preferences so it persists on boot!
+                        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                        prefs.edit().putString("flutter.connection_mode", mode).apply()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onDestroy() {
+        instance = null
+        bluetoothChannel = null
+        super.onDestroy()
     }
 
     private fun startAudioService(action: String) {
