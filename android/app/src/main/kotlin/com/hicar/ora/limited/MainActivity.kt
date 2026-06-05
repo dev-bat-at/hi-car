@@ -104,6 +104,23 @@ class MainActivity : FlutterActivity() {
                         prefs.edit().putString("flutter.connection_mode", mode).apply()
                         result.success(true)
                     }
+                    "openApp" -> {
+                        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                        if (launchIntent != null) {
+                            // 🟢 Thêm đầy đủ 3 flags này để Android 10+ và MIUI cho phép kéo App từ nền lên Foreground
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                                Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                                                Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            try {
+                                startActivity(launchIntent)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.success(false)
+                            }
+                        } else {
+                            result.success(false)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

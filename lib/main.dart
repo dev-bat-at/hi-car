@@ -1,6 +1,9 @@
+import 'dart:isolate';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:hi_car/overlay/overlay_main.dart';
 import 'native/service_channel.dart';
 import 'package:provider/provider.dart';
 import 'core/app_theme.dart';
@@ -11,7 +14,6 @@ import 'providers/bluetooth_provider.dart';
 import 'providers/overlay_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/permission_provider.dart';
-import 'overlay/overlay_main.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +44,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _audioProvider = AudioProvider()..init();
     _overlayProvider = OverlayProvider()..init();
     _initOverlayListener();
+    _initIsolateListener();
     WidgetsBinding.instance.addObserver(this);
 
     // Ensure overlay is hidden on startup
@@ -50,6 +53,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    IsolateNameServer.removePortNameMapping('overlay_action_port');
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -61,6 +65,39 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _overlayProvider.hideOverlay();
     } else if (state == AppLifecycleState.paused) {
       _overlayProvider.showOverlay();
+    }
+  }
+
+  void _initIsolateListener() {
+    final receivePort = ReceivePort();
+    IsolateNameServer.removePortNameMapping('overlay_action_port');
+    IsolateNameServer.registerPortWithName(
+        receivePort.sendPort, 'overlay_action_port');
+
+    receivePort.listen((message) {
+      debugPrint('Isolate listener received: $message');
+      if (message is Map && message.containsKey('action')) {
+        _handleOverlayAction(message['action']);
+      }
+    });
+  }
+
+  void _handleOverlayAction(dynamic action) {
+    OverlayDebugStore.record('Action received: $action');
+    switch (action) {
+      case 'play_greeting':
+        _audioProvider.playGreetingViaNative();
+        break;
+      case 'play_goodbye':
+        _audioProvider.playGoodbyeViaNative();
+        break;
+      case 'stop_audio':
+        _audioProvider.stopNativeAudio();
+        break;
+      case 'open_app':
+        debugPrint('Main: Triggering openApp via ServiceChannel');
+        ServiceChannel.instance.openApp();
+        break;
     }
   }
 
@@ -81,22 +118,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
 
           if (data.containsKey('action')) {
-            final action = data['action'];
-            switch (action) {
-              case 'play_greeting':
-                _audioProvider.playGreetingViaNative();
-                break;
-              case 'play_goodbye':
-                _audioProvider.playGoodbyeViaNative();
-                break;
-              case 'stop_audio':
-                _audioProvider.stopNativeAudio();
-                break;
-              case 'open_app':
-                debugPrint('Main: Triggering openApp via ServiceChannel');
-                ServiceChannel.instance.openApp();
-                break;
-            }
+            _handleOverlayAction(data['action']);
           }
         }
       });

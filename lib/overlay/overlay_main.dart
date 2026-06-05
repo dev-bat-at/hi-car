@@ -1,4 +1,5 @@
 import 'dart:isolate';
+import 'dart:ui';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -57,14 +58,32 @@ class _OverlayStripState extends State<OverlayStrip> {
     });
   }
 
+  Future<void> _sendAction(String action) async {
+    try {
+      // Tìm cổng đã đăng ký ở main app
+      final SendPort? sendPort =
+          IsolateNameServer.lookupPortByName('overlay_action_port');
+
+      if (sendPort != null) {
+        // Bắn data đi
+        sendPort.send({'action': action});
+        print('Overlay: Đã gửi thành công action [$action] qua Isolate');
+      } else {
+        print(
+            'Overlay: Không tìm thấy cổng overlay_action_port. Có thể main app chưa đăng ký.');
+      }
+    } catch (e) {
+      print('Overlay: Lỗi khi gửi action qua Isolate: $e');
+    }
+  }
+
   Future<void> _toggleMusic() async {
     setState(() => _isPlaying = !_isPlaying);
-    await FlutterOverlayWindow.shareData(
-        {'action': _isPlaying ? 'play_greeting' : 'stop_audio'});
+    await _sendAction(_isPlaying ? 'play_greeting' : 'stop_audio');
   }
 
   Future<void> _openApp() async {
-    await FlutterOverlayWindow.shareData({'action': 'open_app'});
+    await _sendAction('open_app');
   }
 
   @override
@@ -77,6 +96,7 @@ class _OverlayStripState extends State<OverlayStrip> {
           // Background/Expansion gesture layer
           GestureDetector(
             onTap: () async {
+              print('Background click detected');
               if (_currentShape == BoxShape.rectangle) {
                 await FlutterOverlayWindow.resizeOverlay(
                   _toPhysicalPixels(50),
@@ -115,7 +135,8 @@ class _OverlayStripState extends State<OverlayStrip> {
               ),
             ),
           ),
-          // Buttons layer
+          // Buttons layer - Use IgnorePointer on the Column to let events pass through
+          // but wrap buttons in their own GestureDetector
           Positioned.fill(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -155,10 +176,10 @@ class _OverlayStripState extends State<OverlayStrip> {
     required bool isGlow,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Center(
+    return Center(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: Container(
           width: 44,
           height: 44,
