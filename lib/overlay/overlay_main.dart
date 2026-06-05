@@ -1,4 +1,6 @@
+import 'dart:isolate';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
@@ -32,11 +34,15 @@ class _OverlayStripState extends State<OverlayStrip> {
   static const Color _neonCyan = Color(0xFF00E5FF);
   static const Color _deepRed = Color(0xFFE91E63);
   bool _isPlaying = false;
+  String? messageFromOverlay;
+  BoxShape _currentShape = BoxShape.circle;
 
-  // Actual position tracking
-  double _currentX = 0;
-  double _currentY = 0;
-  bool _isInitialized = false;
+  SendPort? homePort;
+
+  int _toPhysicalPixels(double logicalSize) {
+    final ratio = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+    return (logicalSize * ratio).round();
+  }
 
   @override
   void initState() {
@@ -61,116 +67,84 @@ class _OverlayStripState extends State<OverlayStrip> {
     await FlutterOverlayWindow.shareData({'action': 'open_app'});
   }
 
-  double get _deviceRatio {
-    final views = ui.PlatformDispatcher.instance.views;
-    return views.isNotEmpty ? views.first.devicePixelRatio : 3.0;
-  }
-
-  double get _screenWidth {
-    final views = ui.PlatformDispatcher.instance.views;
-    return views.isNotEmpty
-        ? (views.first.physicalSize.width / _deviceRatio)
-        : 390.0;
-  }
-
-  double get _screenHeight {
-    final views = ui.PlatformDispatcher.instance.views;
-    return views.isNotEmpty
-        ? (views.first.physicalSize.height / _deviceRatio)
-        : 844.0;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final sw = _screenWidth;
-    final sh = _screenHeight;
-
-    if (!_isInitialized) {
-      _currentX = sw - 60;
-      _currentY = (sh - 130) / 2;
-      _isInitialized = true;
-    }
-
     return Material(
       color: Colors.transparent,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final w = constraints.maxWidth;
-
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanUpdate: (details) {
-              _currentX += details.delta.dx;
-              _currentY += details.delta.dy;
-
-              // Clamp coordinates to logical screen bounds
-              _currentX = _currentX.clamp(0.0, sw - w);
-              _currentY = _currentY.clamp(0.0, sh - 130.0);
-
-              final ratio = _deviceRatio;
-              // Ensure we send rounded physical pixels as explicitly cast doubles
-              final double px = (_currentX * ratio).roundToDouble();
-              final double py = (_currentY * ratio).roundToDouble();
-
-              FlutterOverlayWindow.moveOverlay(OverlayPosition(px, py));
-            },
-            onPanEnd: (details) {
-              double halfScreenWidth = sw / 2;
-
-              if (_currentX + (w / 2) < halfScreenWidth) {
-                _currentX = 0;
+      elevation: 0.0,
+      child: Stack(
+        children: [
+          // Background/Expansion gesture layer
+          GestureDetector(
+            onTap: () async {
+              if (_currentShape == BoxShape.rectangle) {
+                await FlutterOverlayWindow.resizeOverlay(
+                  _toPhysicalPixels(50),
+                  _toPhysicalPixels(100),
+                  true,
+                );
+                setState(() {
+                  _currentShape = BoxShape.circle;
+                });
               } else {
-                _currentX = sw - w;
+                await FlutterOverlayWindow.resizeOverlay(
+                  WindowSize.matchParent,
+                  WindowSize.matchParent,
+                  false,
+                );
+                setState(() {
+                  _currentShape = BoxShape.rectangle;
+                });
               }
-
-              final ratio = _deviceRatio;
-              final double px = (_currentX * ratio).roundToDouble();
-              final double py = (_currentY * ratio).roundToDouble();
-
-              FlutterOverlayWindow.moveOverlay(OverlayPosition(px, py));
             },
             child: Container(
-              width: 60,
-              height: 130,
-              margin: const EdgeInsets.symmetric(vertical: 4),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    _deepRed.withValues(alpha: 0.85),
-                    Colors.black.withValues(alpha: 0.9),
+                    _deepRed.withOpacity(0.85),
+                    Colors.black.withOpacity(0.9),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(w / 2),
-              ),
-              child: Column(
-                children: [
-                  // Music Button
-                  Expanded(
-                    child: _buildNeonButton(
-                      icon: _isPlaying
-                          ? Icons.music_off_rounded
-                          : Icons.music_note_rounded,
-                      iconColor: _isPlaying ? Colors.white : _neonCyan,
-                      isGlow: _isPlaying,
-                      onTap: _toggleMusic,
-                    ),
-                  ),
-                  // App Button
-                  Expanded(
-                    child: _buildNeonButton(
-                      icon: Icons.open_in_new_rounded,
-                      iconColor: Colors.white,
-                      isGlow: false,
-                      onTap: _openApp,
-                    ),
-                  ),
-                ],
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: _neonCyan.withOpacity(0.5),
+                  width: 1.5,
+                ),
               ),
             ),
-          );
-        },
+          ),
+          // Buttons layer
+          Positioned.fill(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Nút điều khiển nhạc
+                Expanded(
+                  child: _buildNeonButton(
+                    icon: _isPlaying ? Icons.pause : Icons.play_arrow,
+                    iconColor: _isPlaying ? _neonCyan : Colors.white,
+                    isGlow: _isPlaying,
+                    onTap: _toggleMusic,
+                  ),
+                ),
+                // Nút mở ứng dụng
+                Expanded(
+                  child: _buildNeonButton(
+                    icon: Icons.open_in_new_rounded,
+                    iconColor: Colors.white,
+                    isGlow: false,
+                    onTap: () {
+                      _openApp();
+                      print('Nhấn mở app');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -184,30 +158,33 @@ class _OverlayStripState extends State<OverlayStrip> {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.black.withValues(alpha: 0.4),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 4,
-              offset: const Offset(1, 1),
+      child: Center(
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withValues(alpha: 0.4),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 4,
+                offset: const Offset(1, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: 26,
+              shadows: isGlow
+                  ? [
+                      Shadow(color: iconColor, blurRadius: 15),
+                    ]
+                  : null,
             ),
-          ],
-        ),
-        child: Center(
-          child: Icon(
-            icon,
-            color: iconColor,
-            size: 26,
-            shadows: isGlow
-                ? [
-                    Shadow(color: iconColor, blurRadius: 15),
-                  ]
-                : null,
           ),
         ),
       ),

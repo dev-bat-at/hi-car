@@ -148,13 +148,14 @@ class OverlayProvider extends ChangeNotifier {
       final active = await FlutterOverlayWindow.isActive();
       if (!active) {
         await FlutterOverlayWindow.showOverlay(
-          enableDrag: false,
-          flag: OverlayFlag.focusPointer,
+          enableDrag: true, // 🟢 ĐỔI TỪ false THÀNH true
+          flag: OverlayFlag.defaultFlag,
           alignment: OverlayAlignment.centerRight,
           visibility: NotificationVisibility.visibilityPublic,
           positionGravity: PositionGravity.auto,
           height: _toInitialOverlayPixels(_overlayWindowHeight),
           width: _toInitialOverlayPixels(_overlayWindowWidth),
+          startPosition: const OverlayPosition(0, -259),
         );
       }
       await syncOverlayState();

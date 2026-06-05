@@ -68,6 +68,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void _initOverlayListener() {
     try {
       FlutterOverlayWindow.overlayListener.listen((data) {
+        debugPrint('Overlay listener received: $data');
         if (data is Map) {
           final type = data['type'];
 
@@ -92,6 +93,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 _audioProvider.stopNativeAudio();
                 break;
               case 'open_app':
+                debugPrint('Main: Triggering openApp via ServiceChannel');
                 ServiceChannel.instance.openApp();
                 break;
             }
