@@ -39,22 +39,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final overlayProvider = context.read<OverlayProvider>();
-    final settings = context.read<SettingsProvider>();
-    final audioProvider = context.read<AudioProvider>();
-
     if (state == AppLifecycleState.resumed) {
       _checkAll();
-      // Hide bubble when user opens the app
-      overlayProvider.hideOverlay();
 
+      final settings = context.read<SettingsProvider>();
+      final audioProvider = context.read<AudioProvider>();
       // For Android Screen/Box mode, auto-play greeting on screen/app resume
-      if (settings.connectionMode == 'android_screen_box' && settings.autoPlayEnabled) {
+      if (settings.connectionMode == 'android_screen_box' &&
+          settings.autoPlayEnabled) {
         audioProvider.playGreetingViaNative();
       }
-    } else if (state == AppLifecycleState.paused) {
-      // Show bubble when user goes home or backs out
-      overlayProvider.showOverlay();
     }
   }
 
@@ -147,7 +141,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 const PermissionStatusWidget(),
 
                 // Bluetooth auto-play trigger config panel
-                if (settingsProvider.connectionMode != 'android_screen_box') ...[
+                if (settingsProvider.connectionMode !=
+                    'android_screen_box') ...[
                   const BluetoothPanelWidget(),
                   SizedBox(height: 16.h),
                 ],
@@ -358,7 +353,8 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
                   if (value && !enabled) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Cần cấp quyền hiển thị nổi để bật bong bóng trợ lý.'),
+                        content: Text(
+                            'Cần cấp quyền hiển thị nổi để bật bong bóng trợ lý.'),
                       ),
                     );
                   }
@@ -378,7 +374,8 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
                     if (!granted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Bạn cần cấp quyền hiển thị nổi để dùng bong bóng trợ lý.'),
+                          content: Text(
+                              'Bạn cần cấp quyền hiển thị nổi để dùng bong bóng trợ lý.'),
                         ),
                       );
                     }
@@ -403,13 +400,17 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
                   );
                 },
                 icon: Icon(
-                  isShowing ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                  isShowing
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
                   size: 18.sp,
                 ),
                 label: Text(
                   !hasPermission
                       ? 'Cấp quyền bong bóng nổi'
-                      : (isShowing ? 'Ẩn bong bóng ngay' : 'Hiện lại bong bóng'),
+                      : (isShowing
+                          ? 'Ẩn bong bóng ngay'
+                          : 'Hiện lại bong bóng'),
                 ),
               ),
             ),

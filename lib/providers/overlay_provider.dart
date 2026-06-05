@@ -30,8 +30,8 @@ class OverlayDebugStore {
 }
 
 class OverlayProvider extends ChangeNotifier {
-  static const double _overlayWindowWidth = 276.0;
-  static const double _overlayWindowHeight = 212.0;
+  static const double _overlayWindowWidth = 60.0;
+  static const double _overlayWindowHeight = 130.0;
 
   bool _isOverlayShowing = false;
   bool _hasPermission = false;
@@ -130,7 +130,7 @@ class OverlayProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_bubble_enabled', value);
     notifyListeners();
-    
+
     if (value) {
       // If enabled and app is in background, it will show automatically.
     } else {
@@ -143,7 +143,7 @@ class OverlayProvider extends ChangeNotifier {
     if (!_isBubbleEnabled) return;
     await checkPermission();
     if (!_hasPermission) return;
-    
+
     try {
       final active = await FlutterOverlayWindow.isActive();
       if (!active) {
@@ -163,10 +163,7 @@ class OverlayProvider extends ChangeNotifier {
 
   Future<void> hideOverlay() async {
     try {
-      final active = await FlutterOverlayWindow.isActive();
-      if (active) {
-        await FlutterOverlayWindow.closeOverlay();
-      }
+      await FlutterOverlayWindow.closeOverlay();
       await syncOverlayState();
     } catch (_) {}
   }

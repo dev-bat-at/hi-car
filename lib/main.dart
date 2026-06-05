@@ -32,14 +32,36 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AudioProvider _audioProvider;
+  late final OverlayProvider _overlayProvider;
 
   @override
   void initState() {
     super.initState();
     _audioProvider = AudioProvider()..init();
+    _overlayProvider = OverlayProvider()..init();
     _initOverlayListener();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Ensure overlay is hidden on startup
+    _overlayProvider.hideOverlay();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive) {
+      _overlayProvider.hideOverlay();
+    } else if (state == AppLifecycleState.paused) {
+      _overlayProvider.showOverlay();
+    }
   }
 
   // Listen for actions sent from overlay bubble
@@ -50,7 +72,8 @@ class _MyAppState extends State<MyApp> {
           final type = data['type'];
 
           if (type == 'overlay_error') {
-            final message = (data['message'] ?? 'Unknown overlay error').toString();
+            final message =
+                (data['message'] ?? 'Unknown overlay error').toString();
             OverlayDebugStore.record(message);
             debugPrint('Overlay error: $message');
             return;
@@ -85,9 +108,10 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => _audioProvider),
         ChangeNotifierProvider(create: (_) => BluetoothProvider()..init()),
-        ChangeNotifierProvider(create: (_) => OverlayProvider()..init()),
+        ChangeNotifierProvider(create: (_) => _overlayProvider),
         ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
-        ChangeNotifierProvider(create: (_) => PermissionProvider()..checkAllPermissions()),
+        ChangeNotifierProvider(
+            create: (_) => PermissionProvider()..checkAllPermissions()),
       ],
       child: ScreenUtilInit(
         designSize: const Size(390, 844),

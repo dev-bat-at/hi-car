@@ -2,23 +2,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-Future<void> _reportOverlayError(String message) async {
-  debugPrint('Overlay error: $message');
-  try {
-    await FlutterOverlayWindow.shareData({
-      'type': 'overlay_error',
-      'message': message,
-    });
-  } catch (_) {}
-}
-
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    _reportOverlayError(details.exceptionAsString());
-  };
   runApp(const OverlayApp());
 }
 
@@ -30,61 +16,49 @@ class OverlayApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
-      home: const OverlayBubble(),
+      home: const OverlayStrip(),
     );
   }
 }
 
-class OverlayBubble extends StatefulWidget {
-  const OverlayBubble({super.key});
+class OverlayStrip extends StatefulWidget {
+  const OverlayStrip({super.key});
 
   @override
-  State<OverlayBubble> createState() => _OverlayBubbleState();
+  State<OverlayStrip> createState() => _OverlayStripState();
 }
 
-class _OverlayBubbleState extends State<OverlayBubble>
-    with SingleTickerProviderStateMixin {
-  static const double _compactSize = 84.0;
-  static const double _expandedWidth = 276.0;
-  static const double _expandedHeight = 212.0;
-  static const double _bubbleDockWidth = 84.0;
-  static const double _panelTopInset = 6.0;
-  static const double _edgePadding = 8.0;
-  static const double _topPadding = 60.0;
-  static const double _bottomPadding = 32.0;
+class _OverlayStripState extends State<OverlayStrip> {
+  static const Color _neonCyan = Color(0xFF00E5FF);
+  static const Color _deepRed = Color(0xFFE91E63);
+  bool _isPlaying = false;
 
-  static const Color _cyan = Color(0xFF00E5FF);
-  static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _red = Color(0xFFFF3D71);
-
-  bool _expanded = false;
-  bool _bubbleOnLeft = true;
-  bool _isTransitioning = false;
-  Offset _compactPosition = const Offset(_edgePadding, 180.0);
-  Offset _windowPosition = const Offset(_edgePadding, 180.0);
-
-  late final AnimationController _animController;
-  late final Animation<double> _expandAnim;
+  // Actual position tracking
+  double _currentX = 0;
+  double _currentY = 0;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
-    _expandAnim = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutQuart,
-      reverseCurve: Curves.easeInQuart,
-    );
-    _initOverlaySize();
+    // Listen for data from the main app if needed
+    FlutterOverlayWindow.overlayListener.listen((data) {
+      if (data is Map && data.containsKey('isPlaying')) {
+        setState(() {
+          _isPlaying = data['isPlaying'];
+        });
+      }
+    });
   }
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
+  Future<void> _toggleMusic() async {
+    setState(() => _isPlaying = !_isPlaying);
+    await FlutterOverlayWindow.shareData(
+        {'action': _isPlaying ? 'play_greeting' : 'stop_audio'});
+  }
+
+  Future<void> _openApp() async {
+    await FlutterOverlayWindow.shareData({'action': 'open_app'});
   }
 
   double get _deviceRatio {
@@ -106,397 +80,134 @@ class _OverlayBubbleState extends State<OverlayBubble>
         : 844.0;
   }
 
-  int _toOverlayUnit(double logical) => logical.round();
-
-  Future<void> _initOverlaySize() async {
-    await _syncWindowPosition(
-      width: _expandedWidth,
-      height: _expandedHeight,
-      useFallback: true,
-    );
-    _setDockFromWindowPosition();
-    await _applyFixedWindow();
-  }
-
-  Future<void> _syncWindowPosition({
-    required double width,
-    required double height,
-    bool useFallback = false,
-  }) async {
-    try {
-      final pos = await FlutterOverlayWindow.getOverlayPosition();
-      Offset next = Offset(pos.x, pos.y);
-      if (next == Offset.zero && useFallback) {
-        next = const Offset(_edgePadding, 180.0);
-      }
-      _windowPosition = _clampPosition(next, width, height);
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      debugPrint('Overlay position sync failed: $e');
-    }
-  }
-
-  Offset _clampPosition(Offset position, double width, double height) {
-    final maxX = (_screenWidth - width - _edgePadding)
-        .clamp(_edgePadding, double.infinity);
-    final maxY = (_screenHeight - height - _bottomPadding)
-        .clamp(_topPadding, double.infinity);
-    return Offset(
-      position.dx.clamp(_edgePadding, maxX),
-      position.dy.clamp(_topPadding, maxY),
-    );
-  }
-
-  Offset _snapCompactPosition(Offset position) {
-    final snapX = position.dx + (_compactSize / 2) < _screenWidth / 2
-        ? _edgePadding
-        : _screenWidth - _compactSize - _edgePadding;
-    return _clampPosition(
-      Offset(snapX, position.dy),
-      _compactSize,
-      _compactSize,
-    );
-  }
-
-  Future<void> _moveOverlay(Offset position) async {
-    await FlutterOverlayWindow.moveOverlay(
-      OverlayPosition(
-        _toOverlayUnit(position.dx).toDouble(),
-        _toOverlayUnit(position.dy).toDouble(),
-      ),
-    );
-  }
-
-  void _setDockFromWindowPosition() {
-    _bubbleOnLeft =
-        _windowPosition.dx + (_expandedWidth / 2) < _screenWidth / 2;
-    _compactPosition = _snapCompactPosition(
-      Offset(
-        _bubbleOnLeft
-            ? _windowPosition.dx
-            : _windowPosition.dx + (_expandedWidth - _compactSize),
-        _windowPosition.dy,
-      ),
-    );
-    _windowPosition = _expandedWindowPositionFor(_compactPosition);
-  }
-
-  Offset _expandedWindowPositionFor(Offset compactPosition) {
-    final expandedX = _bubbleOnLeft
-        ? compactPosition.dx
-        : compactPosition.dx - (_expandedWidth - _compactSize);
-    return _clampPosition(
-      Offset(expandedX, compactPosition.dy),
-      _expandedWidth,
-      _expandedHeight,
-    );
-  }
-
-  Future<void> _applyFixedWindow() async {
-    try {
-      await _moveOverlay(_windowPosition);
-      await FlutterOverlayWindow.resizeOverlay(
-        _toOverlayUnit(_expandedWidth),
-        _toOverlayUnit(_expandedHeight),
-        false,
-      );
-    } catch (e) {
-      debugPrint('Overlay fixed window resize failed: $e');
-    }
-  }
-
-  Future<void> _expandOverlay() async {
-    if (_isTransitioning) return;
-    _isTransitioning = true;
-
-    try {
-      if (mounted) {
-        setState(() => _expanded = true);
-      }
-      await _animController.forward(from: 0);
-    } catch (e) {
-      debugPrint('Overlay expand failed: $e');
-    } finally {
-      _isTransitioning = false;
-    }
-  }
-
-  Future<void> _collapseOverlay() async {
-    if (_isTransitioning) return;
-    _isTransitioning = true;
-
-    try {
-      await _animController.reverse();
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() => _expanded = false);
-    }
-    _isTransitioning = false;
-  }
-
-  Future<void> _toggleExpand() async {
-    if (_expanded) {
-      await _collapseOverlay();
-    } else {
-      await _expandOverlay();
-    }
-  }
-
-  Future<void> _sendAction(String action) async {
-    await FlutterOverlayWindow.shareData({'action': action});
-    if (_expanded) {
-      await _collapseOverlay();
-    }
-  }
-
-  Future<void> _hideOverlay() async {
-    try {
-      await FlutterOverlayWindow.closeOverlay();
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
+    final sw = _screenWidth;
+    final sh = _screenHeight;
+
+    if (!_isInitialized) {
+      _currentX = sw - 60;
+      _currentY = (sh - 130) / 2;
+      _isInitialized = true;
+    }
+
     return Material(
       color: Colors.transparent,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        child: SizedBox(
-          width: _expandedWidth,
-          height: _expandedHeight,
-          child: Stack(
-            children: [
-              Positioned(
-                left: _bubbleOnLeft ? 0 : _expandedWidth - _bubbleDockWidth,
-                top: _panelTopInset,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _toggleExpand,
-                  child: _BubbleShell(isExpanded: _expanded),
-                ),
-              ),
-              if (_expanded)
-                Positioned(
-                  left: _bubbleOnLeft ? 62.0 : 0.0,
-                  top: _panelTopInset,
-                  child: _buildMenuCard(),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
 
-  Widget _buildMenuCard() {
-    return FadeTransition(
-      opacity: _expandAnim,
-      child: Container(
-        width: 206.0,
-        height: 190.0,
-        padding: const EdgeInsets.all(12.0),
-        decoration: BoxDecoration(
-          color: _bg.withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(18.0),
-          border: Border.all(
-            color: _cyan.withValues(alpha: 0.35),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _cyan.withValues(alpha: 0.16),
-              blurRadius: 12.0,
-              spreadRadius: 1.0,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 5.0,
-                  height: 14.0,
-                  decoration: BoxDecoration(
-                    color: _cyan,
-                    borderRadius: BorderRadius.circular(3.0),
-                  ),
-                ),
-                const SizedBox(width: 8.0),
-                const Expanded(
-                  child: Text(
-                    'GIỌNG THƯƠNG GIA',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12.0,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: _collapseOverlay,
-                  child: Container(
-                    width: 26.0,
-                    height: 26.0,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 16.0,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10.0),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildMenuItem(
-                      icon: Icons.waving_hand_rounded,
-                      label: 'Phat loi chao',
-                      color: _cyan,
-                      onTap: () => _sendAction('play_greeting'),
-                    ),
-                    const SizedBox(height: 6.0),
-                    _buildMenuItem(
-                      icon: Icons.directions_car_rounded,
-                      label: 'Phat tam biet',
-                      color: const Color(0xFF00E676),
-                      onTap: () => _sendAction('play_goodbye'),
-                    ),
-                    const SizedBox(height: 6.0),
-                    _buildMenuItem(
-                      icon: Icons.stop_circle_rounded,
-                      label: 'Dung am thanh',
-                      color: _red,
-                      onTap: () => _sendAction('stop_audio'),
-                    ),
-                    const SizedBox(height: 6.0),
-                    _buildMenuItem(
-                      icon: Icons.open_in_new_rounded,
-                      label: 'Mo ung dung',
-                      color: Colors.white,
-                      onTap: () => _sendAction('open_app'),
-                    ),
-                    const SizedBox(height: 6.0),
-                    _buildMenuItem(
-                      icon: Icons.visibility_off_rounded,
-                      label: 'An bong bong',
-                      color: const Color(0xFFFFB74D),
-                      onTap: _hideOverlay,
-                    ),
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanUpdate: (details) {
+              _currentX += details.delta.dx;
+              _currentY += details.delta.dy;
+
+              // Clamp coordinates to logical screen bounds
+              _currentX = _currentX.clamp(0.0, sw - w);
+              _currentY = _currentY.clamp(0.0, sh - 130.0);
+
+              final ratio = _deviceRatio;
+              // Ensure we send rounded physical pixels as explicitly cast doubles
+              final double px = (_currentX * ratio).roundToDouble();
+              final double py = (_currentY * ratio).roundToDouble();
+
+              FlutterOverlayWindow.moveOverlay(OverlayPosition(px, py));
+            },
+            onPanEnd: (details) {
+              double halfScreenWidth = sw / 2;
+
+              if (_currentX + (w / 2) < halfScreenWidth) {
+                _currentX = 0;
+              } else {
+                _currentX = sw - w;
+              }
+
+              final ratio = _deviceRatio;
+              final double px = (_currentX * ratio).roundToDouble();
+              final double py = (_currentY * ratio).roundToDouble();
+
+              FlutterOverlayWindow.moveOverlay(OverlayPosition(px, py));
+            },
+            child: Container(
+              width: 60,
+              height: 130,
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    _deepRed.withValues(alpha: 0.85),
+                    Colors.black.withValues(alpha: 0.9),
                   ],
                 ),
+                borderRadius: BorderRadius.circular(w / 2),
+              ),
+              child: Column(
+                children: [
+                  // Music Button
+                  Expanded(
+                    child: _buildNeonButton(
+                      icon: _isPlaying
+                          ? Icons.music_off_rounded
+                          : Icons.music_note_rounded,
+                      iconColor: _isPlaying ? Colors.white : _neonCyan,
+                      isGlow: _isPlaying,
+                      onTap: _toggleMusic,
+                    ),
+                  ),
+                  // App Button
+                  Expanded(
+                    child: _buildNeonButton(
+                      icon: Icons.open_in_new_rounded,
+                      iconColor: Colors.white,
+                      isGlow: false,
+                      onTap: _openApp,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildMenuItem({
+  Widget _buildNeonButton({
     required IconData icon,
-    required String label,
-    required Color color,
+    required Color iconColor,
+    required bool isGlow,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 26.0,
-        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        margin: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(10.0),
-          border: Border.all(
-            color: color.withValues(alpha: 0.16),
-            width: 1.0,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 16.0),
-            const SizedBox(width: 8.0),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.0,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+          shape: BoxShape.circle,
+          color: Colors.black.withValues(alpha: 0.4),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 4,
+              offset: const Offset(1, 1),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _BubbleShell extends StatelessWidget {
-  final bool isExpanded;
-
-  const _BubbleShell({
-    required this.isExpanded,
-  });
-
-  static const Color _cyan = Color(0xFF00E5FF);
-  static const Color _bg = Color(0xFF0A0A0A);
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 84.0,
-      height: 84.0,
-      child: Center(
-        child: Container(
-          width: 74.0,
-          height: 74.0,
-          decoration: BoxDecoration(
-            color: _bg.withValues(alpha: 0.96),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: _cyan.withValues(alpha: 0.8),
-              width: 1.6,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: _cyan.withValues(alpha: 0.26),
-                blurRadius: 10.0,
-                spreadRadius: 1.0,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 60.0,
-              height: 60.0,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Color(0xFF00E5FF), Color(0xFF00838F)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Icon(
-                isExpanded ? Icons.close_rounded : Icons.volume_up_rounded,
-                color: Colors.black,
-                size: 28.0,
-              ),
-            ),
+        child: Center(
+          child: Icon(
+            icon,
+            color: iconColor,
+            size: 26,
+            shadows: isGlow
+                ? [
+                    Shadow(color: iconColor, blurRadius: 15),
+                  ]
+                : null,
           ),
         ),
       ),
