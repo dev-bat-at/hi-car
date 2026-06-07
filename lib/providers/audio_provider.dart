@@ -188,9 +188,14 @@ class AudioProvider extends ChangeNotifier {
 
   Future<void> playGreetingViaNative() async {
     final audio = activeGreeting;
-    if (audio == null) return;
+    debugPrint('AudioProvider: playGreetingViaNative - audio: ${audio?.title}');
+    if (audio == null) {
+      debugPrint('AudioProvider: No active greeting found');
+      return;
+    }
 
     final path = await AudioRepository.instance.getGreetingAudioPath(audio);
+    debugPrint('AudioProvider: playGreetingViaNative - path: $path');
     if (path != null) {
       try {
         _isNativeGreetingPlaying = true;
@@ -216,9 +221,14 @@ class AudioProvider extends ChangeNotifier {
 
   Future<void> playGoodbyeViaNative() async {
     final audio = activeGoodbye;
-    if (audio == null) return;
+    debugPrint('AudioProvider: playGoodbyeViaNative - audio: ${audio?.title}');
+    if (audio == null) {
+      debugPrint('AudioProvider: No active goodbye found');
+      return;
+    }
 
     final path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
+    debugPrint('AudioProvider: playGoodbyeViaNative - path: $path');
     if (path != null) {
       try {
         _isNativeGoodbyePlaying = true;
@@ -244,6 +254,7 @@ class AudioProvider extends ChangeNotifier {
 
   Future<void> stopNativeAudio() async {
     try {
+      debugPrint('AudioProvider: stopNativeAudio');
       // Stop both native and local player
       await _player.stop();
       _isPlaying = false;

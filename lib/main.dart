@@ -17,7 +17,7 @@ import 'providers/overlay_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/permission_provider.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _setupEasyLoading();
   runApp(const MyApp());
@@ -62,6 +62,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     _audioProvider = AudioProvider()..init();
     _overlayProvider = OverlayProvider()..init();
+
+    // Listen to audio provider to sync state to overlay
+    _audioProvider.addListener(_updateOverlayState);
+
     _initOverlayListener();
     _initIsolateListener();
     WidgetsBinding.instance.addObserver(this);
@@ -70,8 +74,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _overlayProvider.hideOverlay();
   }
 
+  void _updateOverlayState() {
+    _overlayProvider.updateOverlayState(
+      isGreetingPlaying: _audioProvider.isNativeGreetingPlaying,
+      isGoodbyePlaying: _audioProvider.isNativeGoodbyePlaying,
+    );
+  }
+
   @override
   void dispose() {
+    _audioProvider.removeListener(_updateOverlayState);
     IsolateNameServer.removePortNameMapping('overlay_action_port');
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -83,7 +95,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.inactive) {
       _overlayProvider.hideOverlay();
     } else if (state == AppLifecycleState.paused) {
-      _overlayProvider.showOverlay();
+      _overlayProvider.showOverlay().then((_) {
+        _updateOverlayState();
+      });
     }
   }
 

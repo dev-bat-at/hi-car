@@ -52,12 +52,14 @@ class _OverlayStripState extends State<OverlayStrip> {
     super.initState();
     // Listen for data from the main app if needed
     FlutterOverlayWindow.overlayListener.listen((data) {
-      if (data is Map) {
+      if (data is Map && data['type'] == 'state_update') {
         setState(() {
-          if (data.containsKey('isPlaying')) {
-            _isGreetingPlaying = data['isPlaying'];
+          if (data.containsKey('isGreetingPlaying')) {
+            _isGreetingPlaying = data['isGreetingPlaying'] ?? false;
           }
-          // We can expand this logic if main app sends more specific states
+          if (data.containsKey('isGoodbyePlaying')) {
+            _isGoodbyePlaying = data['isGoodbyePlaying'] ?? false;
+          }
         });
       }
     });
@@ -65,12 +67,9 @@ class _OverlayStripState extends State<OverlayStrip> {
 
   Future<void> _sendAction(String action) async {
     try {
-      // Tìm cổng đã đăng ký ở main app
       final SendPort? sendPort =
           IsolateNameServer.lookupPortByName('overlay_action_port');
-
       if (sendPort != null) {
-        // Bắn data đi
         sendPort.send({'action': action});
         print('Overlay: Đã gửi thành công action [$action] qua Isolate');
       } else {

@@ -134,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   // Floating bubble status toggle
                   _FloatingBubbleToggleCard(overlayProvider: overlayProvider),
 
-                  const _OverlayDebugCard(),
+                  // const _OverlayDebugCard(),
 
                   SizedBox(height: 16.h),
 
@@ -364,59 +364,59 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
               ),
             ],
           ),
-          if (isEnabled) ...[
-            SizedBox(height: 12.h),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  if (!hasPermission) {
-                    final granted = await overlayProvider.requestPermission();
-                    if (!context.mounted) return;
-                    if (!granted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Bạn cần cấp quyền hiển thị nổi để dùng bong bóng trợ lý.'),
-                        ),
-                      );
-                    }
-                    return;
-                  }
+          // if (isEnabled) ...[
+          //   SizedBox(height: 12.h),
+          //   SizedBox(
+          //     width: double.infinity,
+          //     child: OutlinedButton.icon(
+          //       onPressed: () async {
+          //         if (!hasPermission) {
+          //           final granted = await overlayProvider.requestPermission();
+          //           if (!context.mounted) return;
+          //           if (!granted) {
+          //             ScaffoldMessenger.of(context).showSnackBar(
+          //               const SnackBar(
+          //                 content: Text(
+          //                     'Bạn cần cấp quyền hiển thị nổi để dùng bong bóng trợ lý.'),
+          //               ),
+          //             );
+          //           }
+          //           return;
+          //         }
 
-                  if (isShowing) {
-                    await overlayProvider.hideOverlay();
-                  } else {
-                    await overlayProvider.showOverlay();
-                  }
+          //         if (isShowing) {
+          //           await overlayProvider.hideOverlay();
+          //         } else {
+          //           await overlayProvider.showOverlay();
+          //         }
 
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        isShowing
-                            ? 'Đã ẩn bong bóng trợ lý.'
-                            : 'Đã hiện lại bong bóng trợ lý.',
-                      ),
-                    ),
-                  );
-                },
-                icon: Icon(
-                  isShowing
-                      ? Icons.visibility_off_rounded
-                      : Icons.visibility_rounded,
-                  size: 18.sp,
-                ),
-                label: Text(
-                  !hasPermission
-                      ? 'Cấp quyền bong bóng nổi'
-                      : (isShowing
-                          ? 'Ẩn bong bóng ngay'
-                          : 'Hiện lại bong bóng'),
-                ),
-              ),
-            ),
-          ],
+          //         if (!context.mounted) return;
+          //         ScaffoldMessenger.of(context).showSnackBar(
+          //           SnackBar(
+          //             content: Text(
+          //               isShowing
+          //                   ? 'Đã ẩn bong bóng trợ lý.'
+          //                   : 'Đã hiện lại bong bóng trợ lý.',
+          //             ),
+          //           ),
+          //         );
+          //       },
+          //       icon: Icon(
+          //         isShowing
+          //             ? Icons.visibility_off_rounded
+          //             : Icons.visibility_rounded,
+          //         size: 18.sp,
+          //       ),
+          //       label: Text(
+          //         !hasPermission
+          //             ? 'Cấp quyền bong bóng nổi'
+          //             : (isShowing
+          //                 ? 'Ẩn bong bóng ngay'
+          //                 : 'Hiện lại bong bóng'),
+          //       ),
+          //     ),
+          //   ),
+          // ],
         ],
       ),
     );
