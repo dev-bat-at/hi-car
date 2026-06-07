@@ -49,6 +49,8 @@ class AudioModel {
   final bool isActiveGoodbye;
   final int durationSeconds;
   final String? description;
+  final String? hash; // Added for verification
+  final String? assetPath; // New field for bundled assets
 
   const AudioModel({
     required this.id,
@@ -62,18 +64,23 @@ class AudioModel {
     this.isActiveGoodbye = false,
     this.durationSeconds = 0,
     this.description,
+    this.hash,
+    this.assetPath,
   });
 
-  bool get hasLocalFile => isDownloaded && localPath != null && localPath!.isNotEmpty;
+  bool get hasLocalFile =>
+      (isDownloaded && localPath != null && localPath!.isNotEmpty) ||
+      (assetPath != null && assetPath!.isNotEmpty);
 
   factory AudioModel.fromJson(Map<String, dynamic> json) {
     return AudioModel(
-      id: json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
       title: json['title'] as String? ?? '',
       type: AudioTypeExtension.fromString(json['type'] as String? ?? 'custom'),
-      remoteUrl: json['remote_url'] as String? ?? '',
+      remoteUrl: json['remote_url'] ?? json['url'] ?? '',
       localPath: json['local_path'] as String?,
       isDownloaded: json['is_downloaded'] as bool? ?? false,
+      hash: json['hash'] as String?,
       downloadedAt: json['downloaded_at'] != null
           ? DateTime.tryParse(json['downloaded_at'] as String)
           : null,
@@ -81,6 +88,7 @@ class AudioModel {
       isActiveGoodbye: json['is_active_goodbye'] as bool? ?? false,
       durationSeconds: json['duration_seconds'] as int? ?? 0,
       description: json['description'] as String?,
+      assetPath: json['asset_path'] as String?,
     );
   }
 
@@ -97,6 +105,8 @@ class AudioModel {
       'is_active_goodbye': isActiveGoodbye,
       'duration_seconds': durationSeconds,
       'description': description,
+      'hash': hash,
+      'asset_path': assetPath,
     };
   }
 
@@ -112,6 +122,8 @@ class AudioModel {
     bool? isActiveGoodbye,
     int? durationSeconds,
     String? description,
+    String? hash,
+    String? assetPath,
   }) {
     return AudioModel(
       id: id ?? this.id,
@@ -125,12 +137,16 @@ class AudioModel {
       isActiveGoodbye: isActiveGoodbye ?? this.isActiveGoodbye,
       durationSeconds: durationSeconds ?? this.durationSeconds,
       description: description ?? this.description,
+      hash: hash ?? this.hash,
+      assetPath: assetPath ?? this.assetPath,
     );
   }
 
   static List<AudioModel> fromJsonList(String jsonString) {
     final list = jsonDecode(jsonString) as List;
-    return list.map((e) => AudioModel.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => AudioModel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static String toJsonList(List<AudioModel> items) {

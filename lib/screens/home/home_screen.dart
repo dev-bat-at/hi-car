@@ -12,6 +12,7 @@ import 'widgets/audio_list_widget.dart';
 import 'widgets/bluetooth_panel_widget.dart';
 import 'widgets/permission_status_widget.dart';
 import 'widgets/playback_controller_widget.dart';
+import '../../widgets/premium_loading.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -181,9 +182,9 @@ class _SyncButton extends StatelessWidget {
         width: 32.w,
         height: 32.w,
         padding: EdgeInsets.all(6.w),
-        child: const CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation(AppColors.primary),
+        child: const PremiumLoading(
+          size: 16,
+          color: AppColors.primary,
         ),
       );
     }

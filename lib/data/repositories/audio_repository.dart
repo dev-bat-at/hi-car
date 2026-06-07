@@ -1,3 +1,7 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/audio_model.dart';
 import '../services/api_service.dart';
@@ -99,26 +103,43 @@ class AudioRepository {
 
   // ===== Get Active Paths =====
 
-  Future<String?> getGreetingAudioPath() async {
-    final prefs = await SharedPreferences.getInstance();
-    final greetingId = prefs.getString(AppConstants.keyGreetingAudioId) ?? '';
-    if (greetingId.isEmpty) return null;
-    final list = await loadLocalAudioList();
-    final audio = list.where((a) => a.id == greetingId).firstOrNull;
-    if (audio == null || !audio.hasLocalFile) return null;
+  Future<String?> getGreetingAudioPath(AudioModel? audio) async {
+    if (audio == null) return null;
+    if (audio.assetPath != null && audio.assetPath!.isNotEmpty) {
+      return await _prepareAssetFile(audio.assetPath!);
+    }
+    if (!audio.hasLocalFile || audio.localPath == null) return null;
     final exists = await SyncService.instance.fileExists(audio.localPath);
     return exists ? audio.localPath : null;
   }
 
-  Future<String?> getGoodbyeAudioPath() async {
-    final prefs = await SharedPreferences.getInstance();
-    final goodbyeId = prefs.getString(AppConstants.keyGoodbyeAudioId) ?? '';
-    if (goodbyeId.isEmpty) return null;
-    final list = await loadLocalAudioList();
-    final audio = list.where((a) => a.id == goodbyeId).firstOrNull;
-    if (audio == null || !audio.hasLocalFile) return null;
+  Future<String?> getGoodbyeAudioPath(AudioModel? audio) async {
+    if (audio == null) return null;
+    if (audio.assetPath != null && audio.assetPath!.isNotEmpty) {
+      return await _prepareAssetFile(audio.assetPath!);
+    }
+    if (!audio.hasLocalFile || audio.localPath == null) return null;
     final exists = await SyncService.instance.fileExists(audio.localPath);
     return exists ? audio.localPath : null;
+  }
+
+  Future<String> _prepareAssetFile(String assetPath) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final fileName = assetPath.split('/').last;
+      final tempFile = File('${tempDir.path}/$fileName');
+
+      if (await tempFile.exists()) return tempFile.path;
+
+      final byteData = await rootBundle.load(assetPath);
+      final buffer = byteData.buffer;
+      await tempFile.writeAsBytes(
+          buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+      return tempFile.path;
+    } catch (e) {
+      debugPrint('Error preparing asset file: $e');
+      return '';
+    }
   }
 
   // ===== Delete =====
@@ -131,9 +152,7 @@ class AudioRepository {
     if (audio?.localPath != null) {
       await SyncService.instance.deleteLocalFile(audio!.localPath!);
     }
-    final updated = currentList
-        .where((a) => a.id != audioId)
-        .toList();
+    final updated = currentList.where((a) => a.id != audioId).toList();
     await saveLocalList(updated);
     return updated;
   }
@@ -142,6 +161,7 @@ class AudioRepository {
 
   Future<void> saveLocalList(List<AudioModel> list) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.keyAudioList, AudioModel.toJsonList(list));
+    await prefs.setString(
+        AppConstants.keyAudioList, AudioModel.toJsonList(list));
   }
 }

@@ -326,7 +326,10 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
         trailing: Switch(
           value: value,
           onChanged: onChanged,
-          activeColor: AppColors.primary,
+          activeColor: Colors.white,
+          activeTrackColor: AppColors.primary,
+          inactiveThumbColor: AppColors.textHint,
+          inactiveTrackColor: AppColors.cardElevated,
         ),
       ),
     );

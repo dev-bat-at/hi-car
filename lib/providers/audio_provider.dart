@@ -6,6 +6,7 @@ import '../data/models/audio_model.dart';
 import '../data/repositories/audio_repository.dart';
 import '../data/services/sync_service.dart';
 import '../native/service_channel.dart';
+import '../core/constants.dart';
 
 enum SyncStatus { idle, syncing, success, error }
 
@@ -20,8 +21,36 @@ class AudioProvider extends ChangeNotifier {
   double _syncProgress = 0;
   String? _syncError;
   DateTime? _lastSyncTime;
+  bool _isBetaMode = false;
+  String? _activeGreetingId;
+  String? _activeGoodbyeId;
+  bool _isNativeGreetingPlaying = false;
+  bool _isNativeGoodbyePlaying = false;
 
-  List<AudioModel> get audioList => _audioList;
+  List<AudioModel> get audioList {
+    final mappedList = _audioList.map((a) {
+      return a.copyWith(
+        isActiveGreeting: _activeGreetingId == a.id,
+        isActiveGoodbye: _activeGoodbyeId == a.id,
+      );
+    }).toList();
+
+    if (!_isBetaMode) return mappedList;
+
+    final demoAudio = AudioModel(
+      id: 'demo_default',
+      title: 'Giọng Mặc Định (Demo)',
+      type: AudioType.custom,
+      remoteUrl: '',
+      assetPath: AppConstants.defaultAudioAsset,
+      description: 'Lấy từ bộ nhớ máy (Không cần mạng)',
+      isActiveGreeting: _activeGreetingId == 'demo_default',
+      isActiveGoodbye: _activeGoodbyeId == 'demo_default',
+    );
+
+    return [demoAudio, ...mappedList];
+  }
+
   AudioModel? get currentlyPlaying => _currentlyPlaying;
   bool get isPlaying => _isPlaying;
   SyncStatus get syncStatus => _syncStatus;
@@ -30,17 +59,30 @@ class AudioProvider extends ChangeNotifier {
   String? get syncError => _syncError;
   DateTime? get lastSyncTime => _lastSyncTime;
   bool get isSyncing => _syncStatus == SyncStatus.syncing;
+  bool get isNativeGreetingPlaying => _isNativeGreetingPlaying;
+  bool get isNativeGoodbyePlaying => _isNativeGoodbyePlaying;
 
   AudioModel? get activeGreeting =>
-      _audioList.where((a) => a.isActiveGreeting).firstOrNull;
+      audioList.where((a) => a.isActiveGreeting).firstOrNull;
   AudioModel? get activeGoodbye =>
-      _audioList.where((a) => a.isActiveGoodbye).firstOrNull;
+      audioList.where((a) => a.isActiveGoodbye).firstOrNull;
 
   // ===== Init =====
 
   Future<void> init() async {
     _audioList = await AudioRepository.instance.loadLocalAudioList();
+
+    final prefs = await SharedPreferences.getInstance();
+    _isBetaMode = prefs.getBool('is_beta_mode') ?? false;
+    _activeGreetingId = prefs.getString(AppConstants.keyGreetingAudioId);
+    _activeGoodbyeId = prefs.getString(AppConstants.keyGoodbyeAudioId);
+
     notifyListeners();
+
+    // Auto-sync on startup if logged in
+    if (prefs.containsKey('auth_token')) {
+      syncFromServer();
+    }
   }
 
   // ===== Sync =====
@@ -65,64 +107,59 @@ class AudioProvider extends ChangeNotifier {
       _audioList = updated;
       _lastSyncTime = DateTime.now();
       _syncStatus = SyncStatus.success;
-      _syncMessage = 'Đồng bộ thành công ${updated.length} file';
+      _syncMessage = 'Đồng bộ hoàn tất (${updated.length} file)';
 
-      // Update native service with new audio paths
+      // Update native service
       await _syncNativePaths();
     } catch (e) {
       _syncStatus = SyncStatus.error;
-      _syncError = e.toString().replaceFirst('Exception: ', '');
-      _syncMessage = 'Đồng bộ thất bại';
+      _syncError = e.toString();
+      _syncMessage = 'Lỗi đồng bộ';
     }
 
     notifyListeners();
-
-    // Reset to idle after 3 seconds
-    await Future.delayed(const Duration(seconds: 3));
-    if (_syncStatus != SyncStatus.syncing) {
-      _syncStatus = SyncStatus.idle;
-      notifyListeners();
-    }
+    Future.delayed(const Duration(seconds: 3), () {
+      if (_syncStatus != SyncStatus.syncing) {
+        _syncStatus = SyncStatus.idle;
+        notifyListeners();
+      }
+    });
   }
 
-  // ===== Set Active =====
+  // ===== Actions =====
 
   Future<void> setAsGreeting(String audioId) async {
-    _audioList = await AudioRepository.instance.setGreetingAudio(
-      audioId,
-      _audioList,
-    );
+    _activeGreetingId = audioId;
+    _audioList =
+        await AudioRepository.instance.setGreetingAudio(audioId, _audioList);
     await _syncNativePaths();
     notifyListeners();
   }
 
   Future<void> setAsGoodbye(String audioId) async {
-    _audioList = await AudioRepository.instance.setGoodbyeAudio(
-      audioId,
-      _audioList,
-    );
+    _activeGoodbyeId = audioId;
+    _audioList =
+        await AudioRepository.instance.setGoodbyeAudio(audioId, _audioList);
     await _syncNativePaths();
     notifyListeners();
   }
 
-  // ===== In-App Playback =====
+  // ===== Playback =====
 
   Future<void> playAudio(AudioModel audio) async {
     try {
       await _player.stop();
-      
-      // Fallback: If local file is missing, stream from remote URL directly for previewing
-      if (audio.hasLocalFile && audio.localPath != null && await File(audio.localPath!).exists()) {
+
+      if (audio.assetPath != null && audio.assetPath!.isNotEmpty) {
+        await _player.setAsset(audio.assetPath!);
+      } else if (audio.hasLocalFile &&
+          audio.localPath != null &&
+          await File(audio.localPath!).exists()) {
         await _player.setFilePath(audio.localPath!);
       } else {
-        String url = audio.remoteUrl;
-        if (url.startsWith('mock://')) {
-          await _player.setAsset('assets/audio/audio_default.MP3');
-        } else {
-          await _player.setUrl(url);
-        }
+        await _player.setUrl(audio.remoteUrl);
       }
-      
+
       await _player.play();
       _currentlyPlaying = audio;
       _isPlaying = true;
@@ -149,31 +186,85 @@ class AudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ===== Native Service Playback =====
-
   Future<void> playGreetingViaNative() async {
-    final path = await AudioRepository.instance.getGreetingAudioPath();
+    final audio = activeGreeting;
+    if (audio == null) return;
+
+    final path = await AudioRepository.instance.getGreetingAudioPath(audio);
     if (path != null) {
-      await ServiceChannel.instance.playGreeting(audioPath: path);
+      try {
+        _isNativeGreetingPlaying = true;
+        notifyListeners();
+
+        await ServiceChannel.instance.playGreeting(audioPath: path);
+
+        // Simulate duration since native doesn't call back for now
+        Future.delayed(
+            Duration(
+                seconds: audio.durationSeconds > 0 ? audio.durationSeconds : 5),
+            () {
+          _isNativeGreetingPlaying = false;
+          notifyListeners();
+        });
+      } catch (e) {
+        _isNativeGreetingPlaying = false;
+        notifyListeners();
+        debugPrint('Native playGreeting error: $e');
+      }
     }
   }
 
   Future<void> playGoodbyeViaNative() async {
-    final path = await AudioRepository.instance.getGoodbyeAudioPath();
+    final audio = activeGoodbye;
+    if (audio == null) return;
+
+    final path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
     if (path != null) {
-      await ServiceChannel.instance.playGoodbye(audioPath: path);
+      try {
+        _isNativeGoodbyePlaying = true;
+        notifyListeners();
+
+        await ServiceChannel.instance.playGoodbye(audioPath: path);
+
+        // Simulate duration
+        Future.delayed(
+            Duration(
+                seconds: audio.durationSeconds > 0 ? audio.durationSeconds : 5),
+            () {
+          _isNativeGoodbyePlaying = false;
+          notifyListeners();
+        });
+      } catch (e) {
+        _isNativeGoodbyePlaying = false;
+        notifyListeners();
+        debugPrint('Native playGoodbye error: $e');
+      }
     }
   }
 
   Future<void> stopNativeAudio() async {
-    await _player.stop();
-    _isPlaying = false;
-    _currentlyPlaying = null;
-    await ServiceChannel.instance.stopAudio();
-    notifyListeners();
+    try {
+      // Stop both native and local player
+      await _player.stop();
+      _isPlaying = false;
+      _currentlyPlaying = null;
+      _isNativeGreetingPlaying = false;
+      _isNativeGoodbyePlaying = false;
+      notifyListeners();
+
+      await ServiceChannel.instance.stopAudio();
+    } catch (e) {
+      debugPrint('Native stopAudio error: $e');
+    }
   }
 
-  // ===== Add & Cache Generated Audio =====
+  // ===== Action Methods =====
+
+  Future<void> deleteAudio(String audioId) async {
+    _audioList =
+        await AudioRepository.instance.deleteAudio(audioId, _audioList);
+    notifyListeners();
+  }
 
   Future<AudioModel> addAndDownloadGeneratedAudio(AudioModel audio) async {
     final localPath = await SyncService.instance.downloadSingleFile(
@@ -193,38 +284,29 @@ class AudioProvider extends ChangeNotifier {
     return updatedAudio;
   }
 
-  // ===== Delete =====
-
-  Future<void> deleteAudio(String audioId) async {
-    _audioList = await AudioRepository.instance.deleteAudio(audioId, _audioList);
-    notifyListeners();
-  }
-
-  // ===== Private =====
+  // ===== Lifecycle =====
 
   Future<void> _syncNativePaths() async {
-    final greetingPath = await AudioRepository.instance.getGreetingAudioPath();
-    final goodbyePath = await AudioRepository.instance.getGoodbyeAudioPath();
-
+    final greetingPath =
+        await AudioRepository.instance.getGreetingAudioPath(activeGreeting);
+    final goodbyePath =
+        await AudioRepository.instance.getGoodbyeAudioPath(activeGoodbye);
     final prefs = await SharedPreferences.getInstance();
-    if (greetingPath != null) {
+
+    if (greetingPath != null)
       await prefs.setString('greeting_audio_path', greetingPath);
-      await ServiceChannel.instance.playGreeting(audioPath: greetingPath);
-      await ServiceChannel.instance.stopAudio();
-    } else {
-      await prefs.remove('greeting_audio_path');
-    }
-    
-    if (goodbyePath != null) {
+    if (goodbyePath != null)
       await prefs.setString('goodbye_audio_path', goodbyePath);
-    } else {
-      await prefs.remove('goodbye_audio_path');
-    }
   }
 
   @override
   void dispose() {
     _player.dispose();
     super.dispose();
+  }
+
+  void setBetaMode(bool value) {
+    _isBetaMode = value;
+    notifyListeners();
   }
 }

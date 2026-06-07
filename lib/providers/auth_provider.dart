@@ -35,41 +35,17 @@ class AuthProvider extends ChangeNotifier {
   // ===== Login =====
 
   Future<bool> login({
-    required String phone,
-    required String password,
+    String? code,
+    String? phone,
+    String? password,
   }) async {
     _setStatus(AuthStatus.loading);
     _errorMessage = null;
     try {
       _user = await AuthRepository.instance.login(
+        code: code,
         phone: phone,
         password: password,
-      );
-      _setStatus(AuthStatus.authenticated);
-      return true;
-    } catch (e) {
-      _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      _setStatus(AuthStatus.error);
-      return false;
-    }
-  }
-
-  // ===== Signup =====
-
-  Future<bool> signup({
-    required String phone,
-    required String name,
-    required String password,
-    required String licensePlate,
-  }) async {
-    _setStatus(AuthStatus.loading);
-    _errorMessage = null;
-    try {
-      _user = await AuthRepository.instance.signup(
-        phone: phone,
-        name: name,
-        password: password,
-        licensePlate: licensePlate,
       );
       _setStatus(AuthStatus.authenticated);
       return true;

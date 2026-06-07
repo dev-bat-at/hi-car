@@ -55,6 +55,7 @@ class PlaybackControllerWidget extends StatelessWidget {
                       icon: Icons.waving_hand_rounded,
                       color: AppColors.primary,
                       isEnabled: hasGreeting,
+                      isPlaying: audioProvider.isNativeGreetingPlaying,
                       onTap: () => audioProvider.playGreetingViaNative(),
                     ),
                   ),
@@ -68,6 +69,7 @@ class PlaybackControllerWidget extends StatelessWidget {
                       icon: Icons.directions_car_rounded,
                       color: AppColors.success,
                       isEnabled: hasGoodbye,
+                      isPlaying: audioProvider.isNativeGoodbyePlaying,
                       onTap: () => audioProvider.playGoodbyeViaNative(),
                     ),
                   ),
@@ -134,6 +136,7 @@ class _ControllerButton extends StatelessWidget {
   final IconData icon;
   final Color color;
   final bool isEnabled;
+  final bool isPlaying;
   final VoidCallback onTap;
 
   const _ControllerButton({
@@ -142,6 +145,7 @@ class _ControllerButton extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.isEnabled,
+    this.isPlaying = false,
     required this.onTap,
   });
 
@@ -163,7 +167,19 @@ class _ControllerButton extends StatelessWidget {
                 padding: EdgeInsets.all(12.w),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(
+                    color: isPlaying ? color : AppColors.border,
+                    width: isPlaying ? 2 : 1,
+                  ),
+                  boxShadow: isPlaying
+                      ? [
+                          BoxShadow(
+                            color: color.withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          )
+                        ]
+                      : null,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,11 +195,14 @@ class _ControllerButton extends StatelessWidget {
                           ),
                           child: Icon(icon, color: Colors.white, size: 20.sp),
                         ),
-                        Icon(
-                          Icons.play_circle_filled_rounded,
-                          color: color,
-                          size: 18.sp,
-                        ),
+                        if (isPlaying)
+                          _PulseIcon(color: color)
+                        else
+                          Icon(
+                            Icons.play_circle_filled_rounded,
+                            color: color,
+                            size: 18.sp,
+                          ),
                       ],
                     ),
                     SizedBox(height: 12.h),
@@ -275,6 +294,60 @@ class _ScaleButtonState extends State<_ScaleButton>
         },
         child: widget.child,
       ),
+    );
+  }
+}
+
+class _PulseIcon extends StatefulWidget {
+  final Color color;
+  const _PulseIcon({required this.color});
+
+  @override
+  State<_PulseIcon> createState() => _PulseIconState();
+}
+
+class _PulseIconState extends State<_PulseIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withOpacity(0.4 * _controller.value),
+                blurRadius: 8 * _controller.value,
+                spreadRadius: 4 * _controller.value,
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.pause_circle_filled_rounded,
+            color: widget.color,
+            size: 20.sp,
+          ),
+        );
+      },
     );
   }
 }

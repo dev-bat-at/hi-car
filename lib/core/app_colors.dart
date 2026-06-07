@@ -32,7 +32,8 @@ class AppColors {
 
   // ===== Status (Vivid Solids) =====
   static const Color success = Color(0xFF22C55E); // Green-500
-  static const Color error = Color(0xFF334155); // Neutral Slate (No Red)
+  static const Color error =
+      Color(0xFFFF5252); // Vivid Red (Material Red Accent)
   static const Color warning = Color(0xFFEAB308); // Yellow-500
   static const Color info = Color(0xFF0EA5E9); // Sky-500
 

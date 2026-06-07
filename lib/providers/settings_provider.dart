@@ -9,7 +9,9 @@ class SettingsProvider extends ChangeNotifier {
   bool _bluetoothAutoPlay = true;
   bool _androidAutoEnabled = true;
   bool _showNotification = true;
-  String _connectionMode = 'phone_bluetooth'; // 'phone_bluetooth', 'phone_android_auto', 'android_screen_box'
+  String _connectionMode =
+      'phone_bluetooth'; // 'phone_bluetooth', 'phone_android_auto', 'android_screen_box'
+  bool _isBetaMode = false;
 
   bool get autoPlayEnabled => _autoPlayEnabled;
   int get delaySeconds => _delaySeconds;
@@ -17,6 +19,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get androidAutoEnabled => _androidAutoEnabled;
   bool get showNotification => _showNotification;
   String get connectionMode => _connectionMode;
+  bool get isBetaMode => _isBetaMode;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -27,9 +30,14 @@ class SettingsProvider extends ChangeNotifier {
     _androidAutoEnabled = prefs.getBool('android_auto_enabled') ?? true;
     _showNotification = prefs.getBool('show_notification') ?? true;
     _connectionMode = prefs.getString('connection_mode') ?? 'phone_bluetooth';
-    
+    _isBetaMode = prefs.getBool('is_beta_mode') ?? false;
+
     // Sync connection mode with native on startup
-    await BluetoothChannel.instance.setConnectionMode(_connectionMode);
+    try {
+      await BluetoothChannel.instance.setConnectionMode(_connectionMode);
+    } catch (e) {
+      debugPrint('Native BluetoothChannel error on init: $e');
+    }
     notifyListeners();
   }
 
@@ -72,7 +80,18 @@ class SettingsProvider extends ChangeNotifier {
     _connectionMode = mode;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('connection_mode', mode);
-    await BluetoothChannel.instance.setConnectionMode(mode);
+    try {
+      await BluetoothChannel.instance.setConnectionMode(mode);
+    } catch (e) {
+      debugPrint('Native BluetoothChannel error on setConnectionMode: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> setBetaMode(bool value) async {
+    _isBetaMode = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_beta_mode', value);
     notifyListeners();
   }
 }

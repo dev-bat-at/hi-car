@@ -125,6 +125,16 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.error),
         ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        errorStyle: const TextStyle(
+          color: AppColors.error,
+          fontFamily: 'Roboto',
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
         hintStyle: const TextStyle(
           color: AppColors.textHint,
           fontFamily: 'Roboto',

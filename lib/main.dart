@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
+import 'package:hi_car/core/app_colors.dart';
 import 'package:hi_car/overlay/overlay_main.dart';
 import 'native/service_channel.dart';
 import 'package:provider/provider.dart';
@@ -17,7 +19,24 @@ import 'providers/permission_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _setupEasyLoading();
   runApp(const MyApp());
+}
+
+void _setupEasyLoading() {
+  EasyLoading.instance
+    ..displayDuration = const Duration(milliseconds: 2000)
+    ..indicatorType = EasyLoadingIndicatorType.fadingCircle
+    ..loadingStyle = EasyLoadingStyle.custom
+    ..indicatorSize = 45.0
+    ..radius = 16.0
+    ..progressColor = AppColors.primary
+    ..backgroundColor = AppColors.surface
+    ..indicatorColor = AppColors.primary
+    ..textColor = AppColors.textPrimary
+    ..maskColor = Colors.black.withOpacity(0.5)
+    ..userInteractions = false
+    ..dismissOnTap = false;
 }
 
 // Register overlay entry point
@@ -147,6 +166,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             debugShowCheckedModeBanner: false,
             theme: AppTheme.dark,
             routerConfig: AppRouter.router,
+            builder: EasyLoading.init(),
           );
         },
       ),

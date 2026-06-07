@@ -155,7 +155,7 @@ class _AudioCard extends StatelessWidget {
             ),
           ),
 
-          SizedBox(width: 14.w),
+          SizedBox(width: 12.w),
 
           // Info
           Expanded(
@@ -267,6 +267,8 @@ class _AudioActions extends StatelessWidget {
     final provider = context.read<AudioProvider>();
 
     return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints(minWidth: 160.w),
       icon: Icon(Icons.more_vert_rounded,
           color: AppColors.textSecondary, size: 20.sp),
       color: AppColors.cardElevated,
@@ -312,7 +314,6 @@ class _AudioActions extends StatelessWidget {
           label: 'Đặt làm tạm biệt',
           color: AppColors.success,
         ),
-        const PopupMenuDivider(),
         _popupItem(
           value: 'delete',
           icon: Icons.delete_outline_rounded,
@@ -331,10 +332,12 @@ class _AudioActions extends StatelessWidget {
   }) {
     return PopupMenuItem(
       value: value,
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18.sp),
-          SizedBox(width: 12.w),
+          SizedBox(width: 10.w),
           Text(label, style: TextStyle(color: color, fontSize: 13.sp)),
         ],
       ),

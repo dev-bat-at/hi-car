@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
+import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/audio_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../data/services/api_service.dart';
+import '../../core/utils/device_utils.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -156,15 +161,26 @@ class SettingsScreen extends StatelessWidget {
                     context.push('/permission-config?fromSettings=true'),
               ),
 
-              _SettingsTile(
-                icon: Icons.no_accounts_rounded,
-                iconColor: AppColors.error,
-                title: 'Xóa tài khoản',
-                subtitle: 'Xóa vĩnh viễn toàn bộ dữ liệu & audio',
-                onTap: () => _showDeleteConfirm(context, auth),
-              ),
+              // _SettingsTile(
+              //   icon: Icons.no_accounts_rounded,
+              //   iconColor: AppColors.error,
+              //   title: 'Xóa tài khoản',
+              //   subtitle: 'Xóa vĩnh viễn toàn bộ dữ liệu & audio',
+              //   onTap: () => _showDeleteConfirm(context, auth),
+              // ),
 
-              SizedBox(height: 40.h),
+              _SettingsSwitchTile(
+                icon: Icons.bug_report_rounded,
+                iconColor: Colors.amber,
+                title: 'Chế độ Demo (Beta)',
+                subtitle: 'Sử dụng thử nghiệm giọng mặc định',
+                value: settings.isBetaMode,
+                onChanged: (v) {
+                  settings.setBetaMode(v);
+                  context.read<AudioProvider>().setBetaMode(v);
+                },
+              ),
+              SizedBox(height: 20.h),
               Center(
                 child: Text(
                   'Giọng Thương Gia v1.0.0 (Limited Edition)',
@@ -238,14 +254,38 @@ class SettingsScreen extends StatelessWidget {
                 const Text('Hủy', style: TextStyle(color: AppColors.textHint)),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã gửi báo cáo lỗi thành công! Cảm ơn bạn.'),
-                  backgroundColor: AppColors.success,
-                ),
-              );
+            onPressed: () async {
+              final description = controller.text.trim();
+              if (description.isEmpty) {
+                UiUtils.showError(context, 'Vui lòng nhập chi tiết lỗi');
+                return;
+              }
+
+              EasyLoading.show(status: 'Đang gửi báo cáo...');
+              try {
+                // Gather device context and send log
+                final deviceContext = await DeviceUtils.GetDeviceContext();
+                await ApiService.instance.logError({
+                  'error_type': 'other', // User reported bug
+                  'description': 'USER_REPORT: $description',
+                  ...deviceContext,
+                  'sync_status': 'unknown',
+                });
+
+                // Dismiss loading and dialog only after SUCCESS
+                EasyLoading.dismiss();
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  UiUtils.showSuccess(
+                      context, 'Đã gửi báo cáo lỗi thành công! Cảm ơn bạn.');
+                }
+              } catch (e) {
+                EasyLoading.dismiss();
+                if (context.mounted) {
+                  UiUtils.showError(context, 'Không thể gửi báo cáo: $e');
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -428,6 +468,10 @@ class _SettingsSwitchTile extends StatelessWidget {
         trailing: Switch(
           value: value,
           onChanged: onChanged,
+          activeColor: Colors.white,
+          activeTrackColor: AppColors.primary,
+          inactiveThumbColor: AppColors.textHint,
+          inactiveTrackColor: AppColors.cardElevated,
         ),
       ),
     );

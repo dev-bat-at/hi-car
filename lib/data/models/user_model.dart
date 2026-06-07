@@ -20,14 +20,22 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    // API v1.1.0 provides data in a nested structure or flat
+    final token = json['token'] as String?;
+
+    // Support both flattened and nested driver info
+    final driver = json['driver'] as Map<String, dynamic>? ?? json;
+
     return UserModel(
-      id: json['id'] as String? ?? '',
-      phone: json['phone'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      licensePlate: json['license_plate'] as String? ?? '',
-      generateCredits: json['generate_credits'] as int? ?? 0,
-      token: json['token'] as String?,
-      avatarUrl: json['avatar_url'] as String?,
+      id: (driver['id'] ?? '').toString(),
+      phone: driver['phone'] as String? ?? '',
+      name: driver['name'] as String? ?? '',
+      licensePlate: driver['active_vehicle_plate'] as String? ??
+          driver['license_plate'] as String? ??
+          '',
+      generateCredits: driver['generate_credits'] as int? ?? 0,
+      token: token ?? json['token'] as String?,
+      avatarUrl: driver['avatar_url'] as String?,
     );
   }
 

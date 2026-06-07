@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
+import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/audio_provider.dart';
 import '../../data/repositories/audio_repository.dart';
@@ -58,13 +59,9 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
       setState(() {
         _generatedAudio = audio;
       });
+      UiUtils.showSuccess(context, 'Tạo audio thành công!');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Tạo audio thất bại: ${e.toString()}'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      UiUtils.showError(context, 'Tạo audio thất bại: ${e.toString()}');
     } finally {
       setState(() {
         _isGenerating = false;
@@ -181,7 +178,7 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                 _buildField(
                   label: 'Tên chủ xe',
                   controller: _nameController,
-                  hint: 'Anh Tiến',
+                  hint: 'Nguyễn Văn A',
                   icon: Icons.person_outline_rounded,
                 ),
                 SizedBox(height: 16.h),
