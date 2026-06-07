@@ -8,6 +8,16 @@ class ServiceChannel {
   static final ServiceChannel instance = ServiceChannel._();
 
   static const _channel = MethodChannel(AppConstants.serviceChannel);
+  VoidCallback? onPlaybackComplete;
+
+  void init() {
+    _channel.setMethodCallHandler((call) async {
+      debugPrint('ServiceChannel: Received method call: ${call.method}');
+      if (call.method == 'onPlaybackComplete') {
+        onPlaybackComplete?.call();
+      }
+    });
+  }
 
   Future<void> startService() async {
     try {

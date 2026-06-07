@@ -37,7 +37,7 @@ class _OverlayStripState extends State<OverlayStrip> {
   static const Color _skyBlue = Color(0xFF005CFF);
   bool _isGreetingPlaying = false;
   bool _isGoodbyePlaying = false;
-  String? messageFromOverlay;
+  String? _errorMessage;
   BoxShape _currentShape = BoxShape.circle;
 
   SendPort? homePort;
@@ -54,14 +54,24 @@ class _OverlayStripState extends State<OverlayStrip> {
     FlutterOverlayWindow.overlayListener.listen((data) {
       if (data is Map && data['type'] == 'state_update') {
         setState(() {
-          if (data.containsKey('isGreetingPlaying')) {
-            _isGreetingPlaying = data['isGreetingPlaying'] ?? false;
+          if (data['isGreetingPlaying'] != null) {
+            _isGreetingPlaying = data['isGreetingPlaying'];
           }
-          if (data.containsKey('isGoodbyePlaying')) {
-            _isGoodbyePlaying = data['isGoodbyePlaying'] ?? false;
+          if (data['isGoodbyePlaying'] != null) {
+            _isGoodbyePlaying = data['isGoodbyePlaying'];
+          }
+          if (data['errorMessage'] != null) {
+            _showToast(data['errorMessage']);
           }
         });
       }
+    });
+  }
+
+  void _showToast(String message) {
+    setState(() => _errorMessage = message);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _errorMessage = null);
     });
   }
 
@@ -183,6 +193,26 @@ class _OverlayStripState extends State<OverlayStrip> {
               ],
             ),
           ),
+          if (_errorMessage != null)
+            Positioned(
+              left: 10,
+              bottom: 10,
+              right: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -208,27 +238,24 @@ class _OverlayStripState extends State<OverlayStrip> {
                 height: 44,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white),
-                  boxShadow: isGlow
-                      ? [
-                          BoxShadow(
-                            color: iconColor.withOpacity(0.5),
-                            blurRadius: 10,
-                            spreadRadius: 2,
-                          ),
-                        ]
-                      : null,
+                  border: Border.all(color: Colors.white, width: 1.0),
                 ),
-                child: Center(
-                  child: Icon(
-                    icon,
-                    color: iconColor,
-                    size: 24,
-                    shadows: isGlow
-                        ? [
-                            Shadow(color: iconColor, blurRadius: 15),
-                          ]
-                        : null,
+                child: _PulseWrapper(
+                  key: ValueKey('pulse_$isGlow'),
+                  isGlow: isGlow,
+                  iconColor: iconColor,
+                  child: Center(
+                    key: ValueKey('icon_$isGlow'),
+                    child: Icon(
+                      icon,
+                      color: iconColor,
+                      size: 24,
+                      shadows: isGlow
+                          ? [
+                              Shadow(color: iconColor, blurRadius: 15),
+                            ]
+                          : null,
+                    ),
                   ),
                 ),
               ),
@@ -236,6 +263,81 @@ class _OverlayStripState extends State<OverlayStrip> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PulseWrapper extends StatefulWidget {
+  final bool isGlow;
+  final Color iconColor;
+  final Widget child;
+
+  const _PulseWrapper({
+    super.key,
+    required this.isGlow,
+    required this.iconColor,
+    required this.child,
+  });
+
+  @override
+  State<_PulseWrapper> createState() => _PulseWrapperState();
+}
+
+class _PulseWrapperState extends State<_PulseWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    if (widget.isGlow) _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_PulseWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isGlow != oldWidget.isGlow) {
+      if (widget.isGlow) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+        _controller.value = 0;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isGlow) return widget.child;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: widget.iconColor.withOpacity(0.4 * _controller.value),
+                blurRadius: 8 * _controller.value,
+                spreadRadius: 4 * _controller.value,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: widget.child,
     );
   }
 }

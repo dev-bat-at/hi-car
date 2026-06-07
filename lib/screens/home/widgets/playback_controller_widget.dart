@@ -196,9 +196,13 @@ class _ControllerButton extends StatelessWidget {
                           child: Icon(icon, color: Colors.white, size: 20.sp),
                         ),
                         if (isPlaying)
-                          _PulseIcon(color: color)
+                          _PulseIcon(
+                            key: const ValueKey('playing_icon'),
+                            color: color,
+                          )
                         else
                           Icon(
+                            key: const ValueKey('stopped_icon'),
                             Icons.play_circle_filled_rounded,
                             color: color,
                             size: 18.sp,
@@ -300,7 +304,7 @@ class _ScaleButtonState extends State<_ScaleButton>
 
 class _PulseIcon extends StatefulWidget {
   final Color color;
-  const _PulseIcon({required this.color});
+  const _PulseIcon({super.key, required this.color});
 
   @override
   State<_PulseIcon> createState() => _PulseIconState();

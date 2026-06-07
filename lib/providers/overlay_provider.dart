@@ -172,6 +172,7 @@ class OverlayProvider extends ChangeNotifier {
   Future<void> updateOverlayState({
     bool? isGreetingPlaying,
     bool? isGoodbyePlaying,
+    String? errorMessage,
   }) async {
     try {
       final active = await FlutterOverlayWindow.isActive();
@@ -181,6 +182,7 @@ class OverlayProvider extends ChangeNotifier {
         'type': 'state_update',
         'isGreetingPlaying': isGreetingPlaying,
         'isGoodbyePlaying': isGoodbyePlaying,
+        'errorMessage': errorMessage,
       });
     } catch (_) {}
   }

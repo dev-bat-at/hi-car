@@ -101,7 +101,10 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             }
             ACTION_PLAY_GREETING_DELAYED -> scheduleDelayedGreeting()
             ACTION_STOP_AUDIO -> stopPlayback()
-            ACTION_BLUETOOTH_DISCONNECTED -> cancelDelayedPlay()
+            ACTION_BLUETOOTH_DISCONNECTED -> {
+                cancelDelayedPlay()
+                stopPlayback()
+            }
         }
 
         return START_STICKY
@@ -198,11 +201,12 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 prepare()
                 start()
                 setOnCompletionListener {
+                    // Update state FIRST so Flutter knows we are done before resources are gone
+                    updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
                     releaseAudioFocus()
                     reset()
                     release()
                     mediaPlayer = null
-                    updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
                 }
                 setOnErrorListener { _, _, _ ->
                     releaseAudioFocus()
@@ -304,6 +308,13 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             )
             .build()
         mediaSession?.setPlaybackState(playbackState)
+
+        // Notify MainActivity so it can inform Flutter
+        if (state == PlaybackStateCompat.STATE_STOPPED) {
+            MainActivity.instance?.runOnUiThread {
+                MainActivity.instance?.serviceChannel?.invokeMethod("onPlaybackComplete", null)
+            }
+        }
     }
 
     // ==============================

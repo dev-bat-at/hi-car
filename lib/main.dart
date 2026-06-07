@@ -115,22 +115,31 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
   }
 
-  void _handleOverlayAction(dynamic action) {
+  Future<void> _handleOverlayAction(dynamic action) async {
     OverlayDebugStore.record('Action received: $action');
+    bool success = true;
+    String? errorMsg;
+
     switch (action) {
       case 'play_greeting':
-        _audioProvider.playGreetingViaNative();
+        success = await _audioProvider.playGreetingViaNative();
+        if (!success) errorMsg = 'Chưa chọn nhạc chào';
         break;
       case 'play_goodbye':
-        _audioProvider.playGoodbyeViaNative();
+        success = await _audioProvider.playGoodbyeViaNative();
+        if (!success) errorMsg = 'Chưa chọn nhạc tạm biệt';
         break;
       case 'stop_audio':
-        _audioProvider.stopNativeAudio();
+        await _audioProvider.stopNativeAudio();
         break;
       case 'open_app':
         debugPrint('Main: Triggering openApp via ServiceChannel');
         ServiceChannel.instance.openApp();
         break;
+    }
+
+    if (!success && errorMsg != null) {
+      _overlayProvider.updateOverlayState(errorMessage: errorMsg);
     }
   }
 

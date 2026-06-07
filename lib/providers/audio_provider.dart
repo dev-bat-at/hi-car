@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,7 @@ class AudioProvider extends ChangeNotifier {
   String? _activeGoodbyeId;
   bool _isNativeGreetingPlaying = false;
   bool _isNativeGoodbyePlaying = false;
+  Timer? _playbackWatchdog;
 
   List<AudioModel> get audioList {
     final mappedList = _audioList.map((a) {
@@ -78,6 +80,13 @@ class AudioProvider extends ChangeNotifier {
     _activeGoodbyeId = prefs.getString(AppConstants.keyGoodbyeAudioId);
 
     notifyListeners();
+
+    // Initialize ServiceChannel listener
+    ServiceChannel.instance.init();
+    ServiceChannel.instance.onPlaybackComplete = () {
+      debugPrint('🔔 [AudioProvider] NHẬN TÍN HIỆU: PHÁT XONG TỪ NATIVE');
+      _stopNativePlaybackState();
+    };
 
     // Auto-sync on startup if logged in
     if (prefs.containsKey('auth_token')) {
@@ -186,87 +195,87 @@ class AudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> playGreetingViaNative() async {
+  Future<bool> playGreetingViaNative() async {
     final audio = activeGreeting;
-    debugPrint('AudioProvider: playGreetingViaNative - audio: ${audio?.title}');
     if (audio == null) {
       debugPrint('AudioProvider: No active greeting found');
-      return;
+      return false;
     }
 
     final path = await AudioRepository.instance.getGreetingAudioPath(audio);
-    debugPrint('AudioProvider: playGreetingViaNative - path: $path');
     if (path != null) {
       try {
         _isNativeGreetingPlaying = true;
+        _isNativeGoodbyePlaying = false;
         notifyListeners();
 
         await ServiceChannel.instance.playGreeting(audioPath: path);
-
-        // Simulate duration since native doesn't call back for now
-        Future.delayed(
-            Duration(
-                seconds: audio.durationSeconds > 0 ? audio.durationSeconds : 5),
-            () {
-          _isNativeGreetingPlaying = false;
-          notifyListeners();
-        });
+        _startWatchdog(audio.durationSeconds);
+        return true;
       } catch (e) {
-        _isNativeGreetingPlaying = false;
-        notifyListeners();
-        debugPrint('Native playGreeting error: $e');
+        _stopNativePlaybackState();
+        return false;
       }
     }
+    return false;
   }
 
-  Future<void> playGoodbyeViaNative() async {
+  Future<bool> playGoodbyeViaNative() async {
     final audio = activeGoodbye;
-    debugPrint('AudioProvider: playGoodbyeViaNative - audio: ${audio?.title}');
     if (audio == null) {
       debugPrint('AudioProvider: No active goodbye found');
-      return;
+      return false;
     }
 
     final path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
-    debugPrint('AudioProvider: playGoodbyeViaNative - path: $path');
     if (path != null) {
       try {
         _isNativeGoodbyePlaying = true;
+        _isNativeGreetingPlaying = false;
         notifyListeners();
 
         await ServiceChannel.instance.playGoodbye(audioPath: path);
-
-        // Simulate duration
-        Future.delayed(
-            Duration(
-                seconds: audio.durationSeconds > 0 ? audio.durationSeconds : 5),
-            () {
-          _isNativeGoodbyePlaying = false;
-          notifyListeners();
-        });
+        _startWatchdog(audio.durationSeconds);
+        return true;
       } catch (e) {
-        _isNativeGoodbyePlaying = false;
-        notifyListeners();
-        debugPrint('Native playGoodbye error: $e');
+        _stopNativePlaybackState();
+        return false;
       }
     }
+    return false;
   }
 
   Future<void> stopNativeAudio() async {
     try {
       debugPrint('AudioProvider: stopNativeAudio');
-      // Stop both native and local player
-      await _player.stop();
-      _isPlaying = false;
-      _currentlyPlaying = null;
-      _isNativeGreetingPlaying = false;
-      _isNativeGoodbyePlaying = false;
-      notifyListeners();
-
+      _stopNativePlaybackState();
       await ServiceChannel.instance.stopAudio();
     } catch (e) {
       debugPrint('Native stopAudio error: $e');
     }
+  }
+
+  void _startWatchdog(int durationSeconds) {
+    _playbackWatchdog?.cancel();
+    // Use duration + 2s buffer, or default 15s if duration is unknown/zero
+    final timeout = (durationSeconds > 0) ? durationSeconds + 3 : 15;
+    _playbackWatchdog = Timer(Duration(seconds: timeout), () {
+      if (_isNativeGreetingPlaying || _isNativeGoodbyePlaying) {
+        debugPrint(
+            '⚠️ [AudioProvider] Watchdog triggered: Force stopping animation');
+        _stopNativePlaybackState();
+      }
+    });
+  }
+
+  void _stopNativePlaybackState() {
+    _playbackWatchdog?.cancel();
+    _player.stop();
+    _isPlaying = false;
+    _currentlyPlaying = null;
+    _isNativeGreetingPlaying = false;
+    _isNativeGoodbyePlaying = false;
+    notifyListeners();
   }
 
   // ===== Action Methods =====

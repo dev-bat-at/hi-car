@@ -15,14 +15,15 @@ class MainActivity : FlutterActivity() {
     }
 
     var bluetoothChannel: MethodChannel? = null
+    var serviceChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         instance = this
 
         // ===== SERVICE CHANNEL =====
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SERVICE_CHANNEL)
-            .setMethodCallHandler { call, result ->
+        serviceChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SERVICE_CHANNEL)
+        serviceChannel?.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startService" -> {
                         startAudioService(AudioForegroundService.ACTION_START)
@@ -143,6 +144,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         instance = null
         bluetoothChannel = null
+        serviceChannel = null
         super.onDestroy()
     }
 
