@@ -53,9 +53,15 @@ class MainActivity : FlutterActivity() {
                     "openApp" -> {
                         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
                         if (launchIntent != null) {
-                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            startActivity(launchIntent)
-                            result.success(true)
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                                Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                                                Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            try {
+                                startActivity(launchIntent)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.success(false)
+                            }
                         } else {
                             result.success(false)
                         }
@@ -94,6 +100,14 @@ class MainActivity : FlutterActivity() {
                         BluetoothReceiver.disconnectDevice(this, address) { success ->
                             runOnUiThread { result.success(success) }
                         }
+                    }
+                    "startDiscovery" -> {
+                        val success = BluetoothReceiver.startDiscovery(this)
+                        result.success(success)
+                    }
+                    "stopDiscovery" -> {
+                        val success = BluetoothReceiver.stopDiscovery(this)
+                        result.success(success)
                     }
                     "setConnectionMode" -> {
                         val mode = call.argument<String>("mode") ?: "phone_bluetooth"

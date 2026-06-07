@@ -2,6 +2,7 @@ package com.hicar.ora.limited
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -39,6 +40,33 @@ class BluetoothReceiver : BroadcastReceiver() {
                 val method = device.javaClass.getMethod("isConnected")
                 method.invoke(device) as? Boolean ?: false
             } catch (e: Exception) {
+                false
+            }
+        }
+
+        fun startDiscovery(context: Context): Boolean {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: return false
+            return try {
+                if (adapter.isDiscovering) {
+                    adapter.cancelDiscovery()
+                }
+                adapter.startDiscovery()
+            } catch (e: SecurityException) {
+                false
+            }
+        }
+
+        fun stopDiscovery(context: Context): Boolean {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: return false
+            return try {
+                if (adapter.isDiscovering) {
+                    adapter.cancelDiscovery()
+                } else {
+                    true
+                }
+            } catch (e: SecurityException) {
                 false
             }
         }
@@ -166,10 +194,24 @@ class BluetoothReceiver : BroadcastReceiver() {
         // Notify MainActivity (if active) so UI updates connection state instantly
         MainActivity.instance?.let { activity ->
             activity.runOnUiThread {
-                activity.bluetoothChannel?.invokeMethod("onDeviceConnectionChanged", mapOf(
-                    "address" to deviceAddress,
-                    "action" to intent.action
-                ))
+                when (intent.action) {
+                    BluetoothDevice.ACTION_FOUND -> {
+                        activity.bluetoothChannel?.invokeMethod("onDeviceFound", mapOf(
+                            "name" to (device.name ?: "Unknown Device"),
+                            "address" to deviceAddress,
+                            "isConnected" to false
+                        ))
+                    }
+                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                        activity.bluetoothChannel?.invokeMethod("onDiscoveryFinished", null)
+                    }
+                    else -> {
+                        activity.bluetoothChannel?.invokeMethod("onDeviceConnectionChanged", mapOf(
+                            "address" to deviceAddress,
+                            "action" to intent.action
+                        ))
+                    }
+                }
             }
         }
 

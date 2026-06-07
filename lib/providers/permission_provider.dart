@@ -9,6 +9,8 @@ class PermissionStatus {
   final bool notification;
   final bool overlay;
   final bool batteryOptimization;
+  final bool bootComplete;
+  final bool backgroundPersistence;
 
   const PermissionStatus({
     this.bluetooth = false,
@@ -17,6 +19,8 @@ class PermissionStatus {
     this.notification = false,
     this.overlay = false,
     this.batteryOptimization = false,
+    this.bootComplete = false,
+    this.backgroundPersistence = false,
   });
 
   bool isGrantedForMode(String mode) {
@@ -64,12 +68,16 @@ class PermissionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Small delay to ensure system settings are synchronized
+      await Future.delayed(const Duration(milliseconds: 300));
+
       final btStatus = await Permission.bluetooth.status;
       final btScanStatus = await Permission.bluetoothScan.status;
       final btConnectStatus = await Permission.bluetoothConnect.status;
       final notifStatus = await Permission.notification.status;
       final overlayGranted = await FlutterOverlayWindow.isPermissionGranted();
-      final batteryGranted = await Permission.ignoreBatteryOptimizations.isGranted;
+      final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
+      final batteryGranted = batteryStatus.isGranted;
 
       _status = PermissionStatus(
         bluetooth: btStatus.isGranted,
@@ -78,6 +86,9 @@ class PermissionProvider extends ChangeNotifier {
         notification: notifStatus.isGranted,
         overlay: overlayGranted,
         batteryOptimization: batteryGranted,
+        bootComplete:
+            true, // System permission usually, we just track if we should show it
+        backgroundPersistence: true,
       );
     } catch (_) {}
 

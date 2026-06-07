@@ -78,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 28.w),
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
           child: FadeTransition(
             opacity: _fadeAnim,
             child: SlideTransition(
@@ -99,13 +99,7 @@ class _LoginScreenState extends State<LoginScreen>
                             height: 80.w,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryGlow,
-                                  blurRadius: 30,
-                                  spreadRadius: 5,
-                                ),
-                              ],
+                              boxShadow: null,
                             ),
                             child: ClipOval(
                               child: Image.asset(
@@ -291,16 +285,9 @@ class _GlowButton extends StatelessWidget {
         width: double.infinity,
         height: 56.h,
         decoration: BoxDecoration(
-          gradient: AppColors.primaryGradient,
+          color: AppColors.primary,
           borderRadius: BorderRadius.circular(14.r),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primaryGlowStrong,
-              blurRadius: 20,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: null,
         ),
         child: Center(
           child: isLoading
@@ -317,7 +304,7 @@ class _GlowButton extends StatelessWidget {
               : Text(
                   label,
                   style: TextStyle(
-                    color: AppColors.background,
+                    color: Colors.white,
                     fontSize: 15.sp,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 2.0,

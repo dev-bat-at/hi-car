@@ -335,8 +335,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Giọng Thương Gia")
-            .setContentText("Đang chạy nền · Automotive Audio")
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentText("Hệ thống trợ lý xe đang hoạt động")
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)

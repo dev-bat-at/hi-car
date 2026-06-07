@@ -77,10 +77,14 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
         title: Text(
           'Hết lượt tạo',
-          style: TextStyle(color: AppColors.textPrimary, fontSize: 16.sp, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold),
         ),
         content: Text(
           'Tài khoản của bạn đã hết lượt tạo audio miễn phí. Vui lòng liên hệ quản trị viên để mua thêm lượt.',
@@ -89,7 +93,8 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Đóng', style: TextStyle(color: AppColors.textHint)),
+            child:
+                const Text('Đóng', style: TextStyle(color: AppColors.textHint)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
@@ -124,7 +129,7 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
           child: Form(
             key: _formKey,
             child: Column(
@@ -134,13 +139,14 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                 Container(
                   padding: EdgeInsets.all(16.w),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
+                    color: AppColors.brandBackground,
                     borderRadius: BorderRadius.circular(14.r),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.primary),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.bolt_rounded, color: AppColors.primary, size: 24.sp),
+                      Icon(Icons.bolt_rounded,
+                          color: AppColors.primary, size: 24.sp),
                       SizedBox(width: 12.w),
                       Expanded(
                         child: Column(
@@ -222,7 +228,7 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                         label: 'Lời Tạm Biệt',
                         icon: Icons.directions_car_rounded,
                         selected: _selectedType == 'goodbye',
-                        color: const Color(0xFF00E676),
+                        color: AppColors.success,
                         onTap: () => setState(() => _selectedType = 'goodbye'),
                       ),
                     ),
@@ -274,26 +280,20 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                   Consumer<AudioProvider>(
                     builder: (context, audioProvider, child) {
                       final isPlayingCurrent = audioProvider.isPlaying &&
-                          audioProvider.currentlyPlaying?.id == _generatedAudio!.id;
+                          audioProvider.currentlyPlaying?.id ==
+                              _generatedAudio!.id;
 
                       return Container(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 16.w, vertical: 12.h),
                         decoration: BoxDecoration(
                           color: AppColors.card,
                           borderRadius: BorderRadius.circular(14.r),
                           border: Border.all(
-                            color: AppColors.primary.withOpacity(isPlayingCurrent ? 0.8 : 0.25),
+                            color: AppColors.primary,
                             width: isPlayingCurrent ? 1.5 : 1,
                           ),
-                          boxShadow: isPlayingCurrent
-                              ? [
-                                  BoxShadow(
-                                    color: AppColors.primary.withOpacity(0.15),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
-                                  )
-                                ]
-                              : null,
+                          boxShadow: null,
                         ),
                         child: Row(
                           children: [
@@ -311,14 +311,16 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: isPlayingCurrent
-                                      ? AppColors.primary.withOpacity(0.2)
-                                      : AppColors.textHint.withOpacity(0.12),
+                                      ? AppColors.primary
+                                      : AppColors.cardElevated,
                                 ),
                                 child: Icon(
                                   isPlayingCurrent
                                       ? Icons.pause_rounded
                                       : Icons.play_arrow_rounded,
-                                  color: isPlayingCurrent ? AppColors.primary : AppColors.textPrimary,
+                                  color: isPlayingCurrent
+                                      ? AppColors.primary
+                                      : AppColors.textPrimary,
                                   size: 20.sp,
                                 ),
                               ),
@@ -339,7 +341,8 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                   SizedBox(height: 2.h),
                                   Text(
                                     _generatedAudio!.hasLocalFile
-                                        ? (_generatedAudio!.description ?? 'Đã lưu offline ✓')
+                                        ? (_generatedAudio!.description ??
+                                            'Đã lưu offline ✓')
                                         : 'Âm thanh trực tuyến (Nghe thử)',
                                     style: TextStyle(
                                       color: AppColors.textSecondary,
@@ -365,15 +368,19 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                   if (isPlayingCurrent) {
                                     await audioProvider.stopAudio();
                                   } else {
-                                    await audioProvider.playAudio(_generatedAudio!);
+                                    await audioProvider
+                                        .playAudio(_generatedAudio!);
                                   }
                                 } else if (value == 'set_greeting') {
                                   AudioModel target = _generatedAudio!;
                                   if (!target.hasLocalFile) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Đang tải và lưu âm thanh...')),
+                                      const SnackBar(
+                                          content: Text(
+                                              'Đang tải và lưu âm thanh...')),
                                     );
-                                    target = await audioProvider.addAndDownloadGeneratedAudio(target);
+                                    target = await audioProvider
+                                        .addAndDownloadGeneratedAudio(target);
                                     setState(() {
                                       _generatedAudio = target;
                                     });
@@ -381,7 +388,8 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                   await audioProvider.setAsGreeting(target.id);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Đã đặt làm Lời Chào hệ thống ✓'),
+                                      content: Text(
+                                          'Đã đặt làm Lời Chào hệ thống ✓'),
                                       backgroundColor: AppColors.success,
                                     ),
                                   );
@@ -389,9 +397,12 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                   AudioModel target = _generatedAudio!;
                                   if (!target.hasLocalFile) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Đang tải và lưu âm thanh...')),
+                                      const SnackBar(
+                                          content: Text(
+                                              'Đang tải và lưu âm thanh...')),
                                     );
-                                    target = await audioProvider.addAndDownloadGeneratedAudio(target);
+                                    target = await audioProvider
+                                        .addAndDownloadGeneratedAudio(target);
                                     setState(() {
                                       _generatedAudio = target;
                                     });
@@ -399,7 +410,8 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                   await audioProvider.setAsGoodbye(target.id);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Đã đặt làm Lời Tạm Biệt hệ thống ✓'),
+                                      content: Text(
+                                          'Đã đặt làm Lời Tạm Biệt hệ thống ✓'),
                                       backgroundColor: AppColors.success,
                                     ),
                                   );
@@ -411,14 +423,20 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                   child: Row(
                                     children: [
                                       Icon(
-                                        isPlayingCurrent ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                        isPlayingCurrent
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
                                         color: AppColors.primary,
                                         size: 18.sp,
                                       ),
                                       SizedBox(width: 8.w),
                                       Text(
-                                        isPlayingCurrent ? 'Dừng phát' : 'Nghe thử',
-                                        style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp),
+                                        isPlayingCurrent
+                                            ? 'Dừng phát'
+                                            : 'Nghe thử',
+                                        style: TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 13.sp),
                                       ),
                                     ],
                                   ),
@@ -435,7 +453,9 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                       SizedBox(width: 8.w),
                                       Text(
                                         'Gửi hệ thống: Đặt Lời Chào',
-                                        style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp),
+                                        style: TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 13.sp),
                                       ),
                                     ],
                                   ),
@@ -446,13 +466,15 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                     children: [
                                       Icon(
                                         Icons.directions_car_rounded,
-                                        color: const Color(0xFF00E676),
+                                        color: AppColors.success,
                                         size: 18.sp,
                                       ),
                                       SizedBox(width: 8.w),
                                       Text(
                                         'Gửi hệ thống: Đặt Lời Tạm Biệt',
-                                        style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp),
+                                        style: TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 13.sp),
                                       ),
                                     ],
                                   ),
@@ -498,7 +520,9 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
             hintText: hint,
             prefixIcon: Icon(icon, size: 20.sp),
           ),
-          validator: (v) => (v?.trim().isEmpty ?? true) ? 'Vui lòng điền thông tin này' : null,
+          validator: (v) => (v?.trim().isEmpty ?? true)
+              ? 'Vui lòng điền thông tin này'
+              : null,
         ),
       ],
     );
@@ -528,7 +552,7 @@ class _TypeSelectCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(vertical: 16.h),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.12) : AppColors.card,
+          color: selected ? AppColors.brandBackground : AppColors.card,
           borderRadius: BorderRadius.circular(12.r),
           border: Border.all(
             color: selected ? color : AppColors.border,
@@ -537,12 +561,14 @@ class _TypeSelectCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Icon(icon, color: selected ? color : AppColors.textHint, size: 24.sp),
+            Icon(icon,
+                color: selected ? color : AppColors.textHint, size: 24.sp),
             SizedBox(height: 8.h),
             Text(
               label,
               style: TextStyle(
-                color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+                color:
+                    selected ? AppColors.textPrimary : AppColors.textSecondary,
                 fontSize: 12.sp,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),

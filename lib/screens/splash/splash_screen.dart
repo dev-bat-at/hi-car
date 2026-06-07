@@ -77,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (mounted) context.go('/home');
     } else {
-      if (mounted) context.go('/login');
+      if (mounted) context.go('/connection-mode');
     }
   }
 
@@ -163,7 +163,8 @@ class _SplashScreenState extends State<SplashScreen>
                     width: 120.w,
                     child: LinearProgressIndicator(
                       backgroundColor: AppColors.border,
-                      valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                      valueColor:
+                          const AlwaysStoppedAnimation(AppColors.primary),
                       borderRadius: BorderRadius.circular(4.r),
                     ),
                   ),

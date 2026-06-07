@@ -48,38 +48,71 @@ class SettingsScreen extends StatelessWidget {
 
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16.w),
-                child: Column(
-                  children: [
-                    _buildModeCard(
-                      context,
-                      mode: 'phone_bluetooth',
-                      title: 'Điện thoại + Bluetooth',
-                      description: 'Tự động phát lời chào khi điện thoại kết nối Bluetooth với xe.',
-                      icon: Icons.bluetooth_rounded,
-                      activeMode: settings.connectionMode,
-                      onTap: () => settings.setConnectionMode('phone_bluetooth'),
-                    ),
-                    SizedBox(height: 10.h),
-                    _buildModeCard(
-                      context,
-                      mode: 'phone_android_auto',
-                      title: 'Điện thoại + Android Auto',
-                      description: 'Chỉ tự động phát khi xe kích hoạt màn hình Android Auto.',
-                      icon: Icons.directions_car_filled_rounded,
-                      activeMode: settings.connectionMode,
-                      onTap: () => settings.setConnectionMode('phone_android_auto'),
-                    ),
-                    SizedBox(height: 10.h),
-                    _buildModeCard(
-                      context,
-                      mode: 'android_screen_box',
-                      title: 'Màn Android độ / Android Box',
-                      description: 'Chạy trực tiếp trên màn hình xe hoặc tự động chạy ngầm trên Box khi nổ máy.',
-                      icon: Icons.developer_board_rounded,
-                      activeMode: settings.connectionMode,
-                      onTap: () => settings.setConnectionMode('android_screen_box'),
-                    ),
-                  ],
+                child: Container(
+                  padding: EdgeInsets.all(16.w),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(16.r),
+                    border: Border.all(color: AppColors.primary),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(10.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          settings.connectionMode == 'phone_bluetooth'
+                              ? Icons.bluetooth_rounded
+                              : (settings.connectionMode == 'phone_android_auto'
+                                  ? Icons.directions_car_filled_rounded
+                                  : Icons.developer_board_rounded),
+                          color: Colors.white,
+                          size: 20.sp,
+                        ),
+                      ),
+                      SizedBox(width: 16.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Đang sử dụng',
+                              style: TextStyle(
+                                  color: AppColors.textHint, fontSize: 10.sp),
+                            ),
+                            Text(
+                              settings.connectionMode == 'phone_bluetooth'
+                                  ? 'Điện thoại + Bluetooth'
+                                  : (settings.connectionMode ==
+                                          'phone_android_auto'
+                                      ? 'Điện thoại + Android Auto'
+                                      : 'Màn Android / Android Box'),
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 15.sp,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ActionChip(
+                        label: const Text('THAY ĐỔI'),
+                        onPressed: () =>
+                            context.push('/connection-mode?fromSettings=true'),
+                        backgroundColor: AppColors.primary,
+                        side: BorderSide.none,
+                        labelStyle: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -87,7 +120,7 @@ class SettingsScreen extends StatelessWidget {
 
               _SettingsSwitchTile(
                 icon: Icons.power_rounded,
-                iconColor: const Color(0xFF00E676),
+                iconColor: AppColors.success,
                 title: 'Tự động phát lời chào',
                 subtitle: 'Kích hoạt phát âm thanh tự động theo chế độ kết nối',
                 value: settings.autoPlayEnabled,
@@ -110,6 +143,17 @@ class SettingsScreen extends StatelessWidget {
                 title: 'Đăng xuất tài khoản',
                 subtitle: 'Thoát hệ thống trên thiết bị này',
                 onTap: () => _showLogoutConfirm(context, auth),
+              ),
+
+              _buildSectionTitle('CÀI ĐẶT NÂNG CAO'),
+
+              _SettingsTile(
+                icon: Icons.security_rounded,
+                iconColor: AppColors.info,
+                title: 'Cấu Hình Quyền Hệ Thống',
+                subtitle: 'Kiểm tra và cấp lại các quyền ứng dụng',
+                onTap: () =>
+                    context.push('/permission-config?fromSettings=true'),
               ),
 
               _SettingsTile(
@@ -140,7 +184,7 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: EdgeInsets.only(left: 20.w, top: 20.h, bottom: 8.h),
+      padding: EdgeInsets.only(left: 16.w, top: 20.h, bottom: 8.h),
       child: Text(
         title,
         style: TextStyle(
@@ -153,98 +197,20 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildModeCard(
-    BuildContext context, {
-    required String mode,
-    required String title,
-    required String description,
-    required IconData icon,
-    required String activeMode,
-    required VoidCallback onTap,
-  }) {
-    final isSelected = mode == activeMode;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all(12.w),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.card,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: 1.5.w,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.15),
-                    blurRadius: 10.r,
-                    spreadRadius: 1.w,
-                  )
-                ]
-              : null,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.all(8.w),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary.withOpacity(0.15) : AppColors.background.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? AppColors.primary : AppColors.textSecondary,
-                size: 22.sp,
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 10.5.sp,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle_rounded,
-                color: AppColors.primary,
-                size: 18.sp,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showBugReportDialog(BuildContext context) {
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
         title: Text(
           'Báo cáo lỗi',
-          style: TextStyle(color: AppColors.textPrimary, fontSize: 15.sp, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 15.sp,
+              fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -259,7 +225,8 @@ class SettingsScreen extends StatelessWidget {
               maxLines: 4,
               style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp),
               decoration: const InputDecoration(
-                hintText: 'Ví dụ: Khi Android Auto cắm dây, audio bị ngắt sau 2 giây...',
+                hintText:
+                    'Ví dụ: Khi Android Auto cắm dây, audio bị ngắt sau 2 giây...',
               ),
             ),
           ],
@@ -267,7 +234,8 @@ class SettingsScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy', style: TextStyle(color: AppColors.textHint)),
+            child:
+                const Text('Hủy', style: TextStyle(color: AppColors.textHint)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -279,7 +247,9 @@ class SettingsScreen extends StatelessWidget {
                 ),
               );
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.background),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white),
             child: const Text('Gửi báo cáo'),
           ),
         ],
@@ -292,13 +262,20 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-        title: Text('Đăng xuất?', style: TextStyle(color: AppColors.textPrimary, fontSize: 15.sp, fontWeight: FontWeight.bold)),
-        content: Text('Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng không?', style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        title: Text('Đăng xuất?',
+            style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 15.sp,
+                fontWeight: FontWeight.bold)),
+        content: Text('Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng không?',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Không', style: TextStyle(color: AppColors.textHint)),
+            child: const Text('Không',
+                style: TextStyle(color: AppColors.textHint)),
           ),
           TextButton(
             onPressed: () async {
@@ -308,7 +285,8 @@ class SettingsScreen extends StatelessWidget {
                 context.go('/login');
               }
             },
-            child: const Text('Đăng xuất', style: TextStyle(color: AppColors.error)),
+            child: const Text('Đăng xuất',
+                style: TextStyle(color: AppColors.error)),
           ),
         ],
       ),
@@ -320,13 +298,21 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-        title: Text('XÓA TÀI KHOẢN?', style: TextStyle(color: AppColors.error, fontSize: 15.sp, fontWeight: FontWeight.bold)),
-        content: Text('Hành động này không thể hoàn tác. Toàn bộ audio đã lưu và tài khoản sẽ bị xoá vĩnh viễn khỏi server.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        title: Text('XÓA TÀI KHOẢN?',
+            style: TextStyle(
+                color: AppColors.error,
+                fontSize: 15.sp,
+                fontWeight: FontWeight.bold)),
+        content: Text(
+            'Hành động này không thể hoàn tác. Toàn bộ audio đã lưu và tài khoản sẽ bị xoá vĩnh viễn khỏi server.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Không', style: TextStyle(color: AppColors.textHint)),
+            child: const Text('Không',
+                style: TextStyle(color: AppColors.textHint)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -336,7 +322,9 @@ class SettingsScreen extends StatelessWidget {
                 context.go('/login');
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: AppColors.textPrimary),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: AppColors.textPrimary),
             child: const Text('Xác nhận xóa'),
           ),
         ],
@@ -362,26 +350,34 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        width: 38.w,
-        height: 38.w,
-        decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10.r),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      child: ListTile(
+        onTap: onTap,
+        leading: Container(
+          width: 38.w,
+          height: 38.w,
+          decoration: BoxDecoration(
+            color: AppColors.brandBackground,
+            borderRadius: BorderRadius.circular(10.r),
+            border: Border.all(color: AppColors.primary, width: 1),
+          ),
+          child: Icon(icon, color: Colors.white, size: 18.sp),
         ),
-        child: Icon(icon, color: iconColor, size: 20.sp),
+        title: Text(
+          title,
+          style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: AppColors.textHint, fontSize: 11.sp),
+        ),
+        trailing: Icon(Icons.arrow_forward_ios_rounded,
+            color: AppColors.textHint, size: 14.sp),
       ),
-      title: Text(
-        title,
-        style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(color: AppColors.textHint, fontSize: 11.sp),
-      ),
-      trailing: Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textHint, size: 14.sp),
     );
   }
 }
@@ -405,27 +401,34 @@ class _SettingsSwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Container(
-        width: 38.w,
-        height: 38.w,
-        decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10.r),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      child: ListTile(
+        leading: Container(
+          width: 38.w,
+          height: 38.w,
+          decoration: BoxDecoration(
+            color: AppColors.brandBackground,
+            borderRadius: BorderRadius.circular(10.r),
+            border: Border.all(color: AppColors.primary, width: 1),
+          ),
+          child: Icon(icon, color: Colors.white, size: 18.sp),
         ),
-        child: Icon(icon, color: iconColor, size: 20.sp),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(color: AppColors.textHint, fontSize: 11.sp),
-      ),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
+        title: Text(
+          title,
+          style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: AppColors.textHint, fontSize: 11.sp),
+        ),
+        trailing: Switch(
+          value: value,
+          onChanged: onChanged,
+        ),
       ),
     );
   }

@@ -15,7 +15,6 @@ class PlaybackControllerWidget extends StatelessWidget {
         final hasGoodbye = audioProvider.activeGoodbye != null;
 
         return Container(
-          margin: EdgeInsets.symmetric(horizontal: 20.w),
           padding: EdgeInsets.all(16.w),
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -49,7 +48,9 @@ class PlaybackControllerWidget extends StatelessWidget {
                   Expanded(
                     child: _ControllerButton(
                       label: 'Phát lời chào',
-                      subLabel: hasGreeting ? audioProvider.activeGreeting!.title : 'Chưa cài đặt',
+                      subLabel: hasGreeting
+                          ? audioProvider.activeGreeting!.title
+                          : 'Chưa cài đặt',
                       icon: Icons.waving_hand_rounded,
                       color: AppColors.primary,
                       isEnabled: hasGreeting,
@@ -60,9 +61,11 @@ class PlaybackControllerWidget extends StatelessWidget {
                   Expanded(
                     child: _ControllerButton(
                       label: 'Phát tạm biệt',
-                      subLabel: hasGoodbye ? audioProvider.activeGoodbye!.title : 'Chưa cài đặt',
+                      subLabel: hasGoodbye
+                          ? audioProvider.activeGoodbye!.title
+                          : 'Chưa cài đặt',
                       icon: Icons.directions_car_rounded,
-                      color: const Color(0xFF00E676),
+                      color: AppColors.success,
                       isEnabled: hasGoodbye,
                       onTap: () => audioProvider.playGoodbyeViaNative(),
                     ),
@@ -76,19 +79,20 @@ class PlaybackControllerWidget extends StatelessWidget {
                   width: double.infinity,
                   padding: EdgeInsets.symmetric(vertical: 12.h),
                   decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.1),
+                    color: AppColors.cardElevated,
                     borderRadius: BorderRadius.circular(12.r),
-                    border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.primary),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.stop_circle_rounded, color: AppColors.error, size: 18.sp),
+                      Icon(Icons.stop_circle_rounded,
+                          color: AppColors.textPrimary, size: 18.sp),
                       SizedBox(width: 8.w),
                       Text(
                         'DỪNG PHÁT NGAY LẬP TỨC',
                         style: TextStyle(
-                          color: AppColors.error,
+                          color: AppColors.textPrimary,
                           fontSize: 12.sp,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.0,
@@ -142,10 +146,17 @@ class _ControllerButton extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(icon, color: color, size: 24.sp),
+                  Container(
+                    padding: EdgeInsets.all(8.w),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 20.sp),
+                  ),
                   Icon(
                     Icons.play_circle_outline_rounded,
-                    color: color.withOpacity(0.8),
+                    color: color,
                     size: 18.sp,
                   ),
                 ],

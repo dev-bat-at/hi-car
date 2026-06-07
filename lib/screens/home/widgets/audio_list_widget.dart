@@ -22,7 +22,7 @@ class AudioListWidget extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              padding: EdgeInsets.zero,
               child: Row(
                 children: [
                   Icon(Icons.library_music_rounded,
@@ -41,7 +41,7 @@ class AudioListWidget extends StatelessWidget {
             ),
             SizedBox(height: 12.h),
             ListView.separated(
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              padding: EdgeInsets.zero,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: list.length,
@@ -61,7 +61,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
+      margin: EdgeInsets.zero,
       padding: EdgeInsets.symmetric(vertical: 32.h),
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -112,7 +112,7 @@ class _AudioCard extends StatelessWidget {
     final typeColor = audio.type == AudioType.greeting
         ? AppColors.primary
         : audio.type == AudioType.goodbye
-            ? const Color(0xFF00E676)
+            ? AppColors.success
             : AppColors.warning;
 
     return Container(
@@ -124,15 +124,7 @@ class _AudioCard extends StatelessWidget {
           color: isPlaying ? AppColors.primary : AppColors.border,
           width: isPlaying ? 1.5 : 1,
         ),
-        boxShadow: isPlaying
-            ? [
-                BoxShadow(
-                  color: AppColors.primaryGlow,
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
+        boxShadow: null,
       ),
       child: Row(
         children: [
@@ -141,9 +133,8 @@ class _AudioCard extends StatelessWidget {
             width: 44.w,
             height: 44.w,
             decoration: BoxDecoration(
-              color: typeColor.withOpacity(0.12),
+              color: typeColor,
               borderRadius: BorderRadius.circular(12.r),
-              border: Border.all(color: typeColor.withOpacity(0.3)),
             ),
             child: Icon(
               audio.type == AudioType.greeting
@@ -151,7 +142,7 @@ class _AudioCard extends StatelessWidget {
                   : audio.type == AudioType.goodbye
                       ? Icons.directions_car_rounded
                       : Icons.audiotrack_rounded,
-              color: typeColor,
+              color: Colors.white,
               size: 20.sp,
             ),
           ),
@@ -177,10 +168,10 @@ class _AudioCard extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 8.w, vertical: 2.h),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
                       decoration: BoxDecoration(
-                        color: typeColor.withOpacity(0.1),
+                        color: AppColors.brandBackground,
                         borderRadius: BorderRadius.circular(6.r),
                       ),
                       child: Text(
@@ -194,11 +185,11 @@ class _AudioCard extends StatelessWidget {
                     ),
                     SizedBox(width: 8.w),
                     if (audio.isActiveGreeting)
-                      _StatusBadge(label: '✓ Lời chào', color: AppColors.primary),
+                      _StatusBadge(
+                          label: '✓ Lời chào', color: AppColors.primary),
                     if (audio.isActiveGoodbye)
                       _StatusBadge(
-                          label: '✓ Tạm biệt',
-                          color: const Color(0xFF00E676)),
+                          label: '✓ Tạm biệt', color: AppColors.success),
                   ],
                 ),
                 if (audio.isDownloaded) ...[
@@ -239,17 +230,18 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color,
         borderRadius: BorderRadius.circular(6.r),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: color,
+          color: Colors.white,
           fontSize: 9.sp,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -310,7 +302,7 @@ class _AudioActions extends StatelessWidget {
           value: 'set_goodbye',
           icon: Icons.directions_car_rounded,
           label: 'Đặt làm tạm biệt',
-          color: const Color(0xFF00E676),
+          color: AppColors.success,
         ),
         _popupItem(
           value: 'delete',
@@ -351,4 +343,3 @@ class _AudioActions extends StatelessWidget {
     );
   }
 }
-

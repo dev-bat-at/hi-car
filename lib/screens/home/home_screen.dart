@@ -118,45 +118,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           backgroundColor: AppColors.card,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 16.h),
-
-                // User profile card
-                if (user != null) _UserProfileCard(user: user),
-
-                SizedBox(height: 16.h),
-
-                // Floating bubble status toggle
-                _FloatingBubbleToggleCard(overlayProvider: overlayProvider),
-
-                SizedBox(height: 16.h),
-
-                const _OverlayDebugCard(),
-
-                SizedBox(height: 16.h),
-
-                // Permission status panel
-                const PermissionStatusWidget(),
-
-                // Bluetooth auto-play trigger config panel
-                if (settingsProvider.connectionMode !=
-                    'android_screen_box') ...[
-                  const BluetoothPanelWidget(),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   SizedBox(height: 16.h),
+
+                  // User profile card
+                  if (user != null) _UserProfileCard(user: user),
+
+                  SizedBox(height: 16.h),
+
+                  // Floating bubble status toggle
+                  _FloatingBubbleToggleCard(overlayProvider: overlayProvider),
+
+                  const _OverlayDebugCard(),
+
+                  SizedBox(height: 16.h),
+
+                  // Permission status panel
+                  const PermissionStatusWidget(),
+
+                  // Bluetooth auto-play trigger config panel
+                  if (settingsProvider.connectionMode !=
+                      'android_screen_box') ...[
+                    SizedBox(height: 16.h),
+                    const BluetoothPanelWidget(),
+                  ],
+
+                  SizedBox(height: 16.h),
+
+                  // Audio controller buttons
+                  const PlaybackControllerWidget(),
+
+                  SizedBox(height: 24.h),
+
+                  // Audio list
+                  const AudioListWidget(),
+
+                  SizedBox(height: 40.h),
                 ],
-
-                // Audio controller buttons
-                const PlaybackControllerWidget(),
-
-                SizedBox(height: 24.h),
-
-                // Audio list
-                const AudioListWidget(),
-
-                SizedBox(height: 40.h),
-              ],
+              ),
             ),
           ),
         ),
@@ -201,10 +204,9 @@ class _UserProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        gradient: AppColors.cardGradient,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(16.r),
         border: Border.all(color: AppColors.border),
       ),
@@ -215,12 +217,12 @@ class _UserProfileCard extends StatelessWidget {
             height: 48.w,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.primary.withOpacity(0.1),
-              border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+              color: AppColors.brandBackground,
+              border: Border.all(color: AppColors.primary),
             ),
             child: Icon(
               Icons.person_rounded,
-              color: AppColors.primary,
+              color: Colors.white,
               size: 24.sp,
             ),
           ),
@@ -251,19 +253,19 @@ class _UserProfileCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.12),
+              color: AppColors.success,
               borderRadius: BorderRadius.circular(10.r),
             ),
             child: Row(
               children: [
-                Icon(Icons.bolt_rounded, color: AppColors.primary, size: 14.sp),
+                Icon(Icons.bolt_rounded, color: Colors.white, size: 14.sp),
                 SizedBox(width: 4.w),
                 Text(
                   '${user.generateCredits} lượt',
                   style: TextStyle(
-                    color: AppColors.primary,
+                    color: Colors.white,
                     fontSize: 11.sp,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -287,7 +289,6 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
     final isShowing = overlayProvider.isOverlayShowing;
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -303,13 +304,13 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
                 height: 40.w,
                 decoration: BoxDecoration(
                   color: isEnabled
-                      ? AppColors.primary.withOpacity(0.15)
-                      : AppColors.textHint.withOpacity(0.12),
+                      ? AppColors.brandBackground
+                      : AppColors.cardElevated,
                   borderRadius: BorderRadius.circular(10.r),
                 ),
                 child: Icon(
                   Icons.widgets_rounded,
-                  color: isEnabled ? AppColors.primary : AppColors.textHint,
+                  color: isEnabled ? Colors.white : AppColors.textHint,
                   size: 20.sp,
                 ),
               ),
@@ -434,13 +435,12 @@ class _OverlayDebugCard extends StatelessWidget {
         }
 
         return Container(
-          margin: EdgeInsets.symmetric(horizontal: 20.w),
           padding: EdgeInsets.all(14.w),
           decoration: BoxDecoration(
-            color: AppColors.error.withOpacity(0.08),
+            color: AppColors.brandBackground,
             borderRadius: BorderRadius.circular(16.r),
             border: Border.all(
-              color: AppColors.error.withOpacity(0.35),
+              color: AppColors.primary,
             ),
           ),
           child: Column(
@@ -450,7 +450,7 @@ class _OverlayDebugCard extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.bug_report_rounded,
-                    color: AppColors.error,
+                    color: Colors.white,
                     size: 18.sp,
                   ),
                   SizedBox(width: 8.w),

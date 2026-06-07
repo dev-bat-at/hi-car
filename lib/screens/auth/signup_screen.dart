@@ -92,7 +92,7 @@ class _SignupScreenState extends State<SignupScreen>
         child: FadeTransition(
           opacity: _fadeAnim,
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 20.h),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
             child: Form(
               key: _formKey,
               child: Column(
@@ -114,32 +114,28 @@ class _SignupScreenState extends State<SignupScreen>
                       fontSize: 13.sp,
                     ),
                   ),
-
                   SizedBox(height: 32.h),
-
                   _buildField(
                     label: 'Số điện thoại',
                     controller: _phoneController,
                     hint: '0901 234 567',
                     icon: Icons.phone_android_rounded,
                     keyboardType: TextInputType.phone,
-                    validator: (v) =>
-                        (v?.trim().isEmpty ?? true) ? 'Vui lòng nhập SĐT' : null,
+                    validator: (v) => (v?.trim().isEmpty ?? true)
+                        ? 'Vui lòng nhập SĐT'
+                        : null,
                   ),
-
                   SizedBox(height: 18.h),
-
                   _buildField(
                     label: 'Họ và tên',
                     controller: _nameController,
                     hint: 'Nguyễn Văn A',
                     icon: Icons.person_outline_rounded,
-                    validator: (v) =>
-                        (v?.trim().isEmpty ?? true) ? 'Vui lòng nhập tên' : null,
+                    validator: (v) => (v?.trim().isEmpty ?? true)
+                        ? 'Vui lòng nhập tên'
+                        : null,
                   ),
-
                   SizedBox(height: 18.h),
-
                   _buildField(
                     label: 'Biển số xe',
                     controller: _licensePlateController,
@@ -149,9 +145,7 @@ class _SignupScreenState extends State<SignupScreen>
                         ? 'Vui lòng nhập biển số'
                         : null,
                   ),
-
                   SizedBox(height: 18.h),
-
                   _buildField(
                     label: 'Mật khẩu',
                     controller: _passwordController,
@@ -169,14 +163,13 @@ class _SignupScreenState extends State<SignupScreen>
                           setState(() => _obscurePassword = !_obscurePassword),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Vui lòng nhập mật khẩu';
+                      if (v == null || v.isEmpty)
+                        return 'Vui lòng nhập mật khẩu';
                       if (v.length < 6) return 'Tối thiểu 6 ký tự';
                       return null;
                     },
                   ),
-
                   SizedBox(height: 18.h),
-
                   _buildField(
                     label: 'Xác nhận mật khẩu',
                     controller: _confirmPasswordController,
@@ -200,9 +193,7 @@ class _SignupScreenState extends State<SignupScreen>
                       return null;
                     },
                   ),
-
                   SizedBox(height: 36.h),
-
                   Consumer<AuthProvider>(
                     builder: (context, auth, _) {
                       return _SignupButton(
@@ -211,9 +202,7 @@ class _SignupScreenState extends State<SignupScreen>
                       );
                     },
                   ),
-
                   SizedBox(height: 20.h),
-
                   Center(
                     child: TextButton(
                       onPressed: () => context.pop(),
@@ -301,16 +290,9 @@ class _SignupButton extends StatelessWidget {
         width: double.infinity,
         height: 56.h,
         decoration: BoxDecoration(
-          gradient: AppColors.primaryGradient,
+          color: AppColors.primary,
           borderRadius: BorderRadius.circular(14.r),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primaryGlowStrong,
-              blurRadius: 20,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: null,
         ),
         child: Center(
           child: isLoading
@@ -325,7 +307,7 @@ class _SignupButton extends StatelessWidget {
               : Text(
                   'ĐĂNG KÝ',
                   style: TextStyle(
-                    color: AppColors.background,
+                    color: Colors.white,
                     fontSize: 15.sp,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 2.0,

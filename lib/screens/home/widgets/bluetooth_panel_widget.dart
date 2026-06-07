@@ -21,21 +21,20 @@ class _BluetoothPanelWidgetState extends State<BluetoothPanelWidget> {
     return Consumer<BluetoothProvider>(
       builder: (context, btProvider, _) {
         return Container(
-          margin: EdgeInsets.symmetric(horizontal: 20.w),
           decoration: BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(16.r),
             border: Border.all(
               color: btProvider.hasTargetDevice
-                  ? AppColors.primary.withOpacity(0.4)
+                  ? AppColors.primary
                   : AppColors.border,
             ),
             boxShadow: btProvider.hasTargetDevice
                 ? [
                     BoxShadow(
-                      color: AppColors.primaryGlow,
-                      blurRadius: 12,
-                      spreadRadius: 1,
+                      color: AppColors.primary,
+                      blurRadius: 8,
+                      spreadRadius: 0,
                     )
                   ]
                 : null,
@@ -54,12 +53,12 @@ class _BluetoothPanelWidgetState extends State<BluetoothPanelWidget> {
                         width: 40.w,
                         height: 40.w,
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.12),
+                          color: AppColors.brandBackground,
                           borderRadius: BorderRadius.circular(10.r),
                         ),
                         child: Icon(
                           Icons.bluetooth_rounded,
-                          color: AppColors.primary,
+                          color: Colors.white,
                           size: 20.sp,
                         ),
                       ),
@@ -126,18 +125,21 @@ class _BluetoothExpandedContent extends StatefulWidget {
   const _BluetoothExpandedContent({required this.provider});
 
   @override
-  State<_BluetoothExpandedContent> createState() => _BluetoothExpandedContentState();
+  State<_BluetoothExpandedContent> createState() =>
+      _BluetoothExpandedContentState();
 }
 
 class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
   @override
   void initState() {
     super.initState();
-    if (widget.provider.pairedDevices.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.provider.pairedDevices.isEmpty) {
         widget.provider.loadPairedDevices();
-      });
-    }
+      }
+      // Auto-start scan when expanding
+      widget.provider.startScan();
+    });
   }
 
   @override
@@ -178,13 +180,12 @@ class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
                             horizontal: 14.w, vertical: 8.h),
                         decoration: BoxDecoration(
                           color: selected
-                              ? AppColors.primary.withOpacity(0.15)
+                              ? AppColors.brandBackground
                               : AppColors.cardElevated,
                           borderRadius: BorderRadius.circular(10.r),
                           border: Border.all(
-                            color: selected
-                                ? AppColors.primary
-                                : AppColors.border,
+                            color:
+                                selected ? AppColors.primary : AppColors.border,
                           ),
                         ),
                         child: Text(
@@ -194,9 +195,8 @@ class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
                                 ? AppColors.primary
                                 : AppColors.textSecondary,
                             fontSize: 13.sp,
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w400,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w400,
                           ),
                         ),
                       ),
@@ -210,7 +210,7 @@ class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
 
         SizedBox(height: 16.h),
 
-        // Refresh and device list
+        // Paired devices header
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.w),
           child: Row(
@@ -236,7 +236,8 @@ class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
                           height: 14.w,
                           child: const CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                            valueColor:
+                                AlwaysStoppedAnimation(AppColors.primary),
                           ),
                         )
                       : Icon(
@@ -268,7 +269,8 @@ class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
           )
         else
           ...provider.pairedDevices.map((device) {
-            final isConnecting = provider.connectingDevices[device.address] == true;
+            final isConnecting =
+                provider.connectingDevices[device.address] == true;
             return _DeviceItem(
               device: device,
               isConnecting: isConnecting,
@@ -277,6 +279,91 @@ class _BluetoothExpandedContentState extends State<_BluetoothExpandedContent> {
                       provider.targetDevice?.address == device.address
                   ? () => provider.clearTargetDevice()
                   : null,
+            );
+          }),
+
+        SizedBox(height: 16.h),
+
+        // Scanned devices header
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Thiết bị tìm thấy',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              InkWell(
+                onTap: () => provider.isScanning
+                    ? provider.stopScan()
+                    : provider.startScan(),
+                borderRadius: BorderRadius.circular(8.r),
+                child: Padding(
+                  padding: EdgeInsets.all(4.w),
+                  child: provider.isScanning
+                      ? SizedBox(
+                          width: 14.w,
+                          height: 14.w,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation(AppColors.primary),
+                          ),
+                        )
+                      : Text(
+                          'Tìm kiếm',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(height: 8.h),
+
+        if (provider.scannedDevices.isEmpty && !provider.isScanning)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Nhấn Tìm kiếm để tìm thiết bị mới',
+                  style: TextStyle(
+                    color: AppColors.textHint,
+                    fontSize: 11.sp,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'Lưu ý: Bạn có thể cần bật GPS để quét thiết bị.',
+                  style: TextStyle(
+                    color: AppColors.textHint.withOpacity(0.6),
+                    fontSize: 9.sp,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...provider.scannedDevices.map((device) {
+            final isConnecting =
+                provider.connectingDevices[device.address] == true;
+            return _DeviceItem(
+              device: device,
+              isConnecting: isConnecting,
+              onTap: () => provider.toggleDeviceConnection(device),
             );
           }),
 
@@ -322,16 +409,15 @@ class _DeviceItem extends StatelessWidget {
       trailingWidget = Container(
         padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
         decoration: BoxDecoration(
-          color: AppColors.success.withOpacity(0.12),
+          color: AppColors.success,
           borderRadius: BorderRadius.circular(8.r),
-          border: Border.all(color: AppColors.success.withOpacity(0.4)),
         ),
         child: Text(
           'Ngắt kết nối',
           style: TextStyle(
-            color: AppColors.success,
+            color: Colors.white,
             fontSize: 10.sp,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.bold,
           ),
         ),
       );
@@ -363,7 +449,9 @@ class _DeviceItem extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              device.isConnected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_rounded,
+              device.isConnected
+                  ? Icons.bluetooth_connected_rounded
+                  : Icons.bluetooth_rounded,
               color: device.isSelected ? AppColors.primary : AppColors.textHint,
               size: 18.sp,
             ),
@@ -392,17 +480,18 @@ class _DeviceItem extends StatelessWidget {
                       if (device.isSelected) ...[
                         SizedBox(width: 6.w),
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 6.w, vertical: 2.h),
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.12),
+                            color: AppColors.success,
                             borderRadius: BorderRadius.circular(6.r),
                           ),
                           child: Text(
                             'Tự phát',
                             style: TextStyle(
-                              color: AppColors.primary,
+                              color: Colors.white,
                               fontSize: 9.sp,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -439,7 +528,7 @@ class _DeviceItem extends StatelessWidget {
               GestureDetector(
                 onTap: onClear,
                 child: Icon(Icons.close_rounded,
-                    color: AppColors.error, size: 16.sp),
+                    color: AppColors.textSecondary, size: 16.sp),
               ),
             ],
           ],
@@ -448,5 +537,3 @@ class _DeviceItem extends StatelessWidget {
     );
   }
 }
-
-

@@ -35,7 +35,9 @@ class PermissionStatusWidget extends StatelessWidget {
           );
         }
 
-        if (mode == 'phone_bluetooth' || mode == 'phone_android_auto' || mode == 'android_screen_box') {
+        if (mode == 'phone_bluetooth' ||
+            mode == 'phone_android_auto' ||
+            mode == 'android_screen_box') {
           if (permissionList.isNotEmpty) {
             permissionList.add(Divider(color: AppColors.divider, height: 16.h));
           }
@@ -48,13 +50,16 @@ class PermissionStatusWidget extends StatelessWidget {
           );
         }
 
-        if (mode == 'phone_bluetooth' || mode == 'phone_android_auto' || mode == 'android_screen_box') {
+        if (mode == 'phone_bluetooth' ||
+            mode == 'phone_android_auto' ||
+            mode == 'android_screen_box') {
           if (permissionList.isNotEmpty) {
             permissionList.add(Divider(color: AppColors.divider, height: 16.h));
           }
           permissionList.add(
             _PermissionRow(
-              label: 'Quyền hiển thị trên ứng dụng khác (Overlay, dùng cho bong bóng nổi)',
+              label:
+                  'Quyền hiển thị trên ứng dụng khác (Overlay, dùng cho bong bóng nổi)',
               isGranted: overlayGranted,
               onTap: () => overlayProvider.requestPermission(),
             ),
@@ -69,21 +74,19 @@ class PermissionStatusWidget extends StatelessWidget {
             _PermissionRow(
               label: 'Quyền chạy ẩn không tối ưu pin (Ignore Battery)',
               isGranted: batteryGranted,
-              onTap: () => permissionProvider.requestBatteryOptimizationPermission(),
+              onTap: () =>
+                  permissionProvider.requestBatteryOptimizationPermission(),
             ),
           );
         }
 
         return Container(
-          margin: EdgeInsets.symmetric(horizontal: 20.w),
           padding: EdgeInsets.all(16.w),
           decoration: BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(16.r),
             border: Border.all(
-              color: allGranted
-                  ? AppColors.success.withOpacity(0.3)
-                  : AppColors.error.withOpacity(0.3),
+              color: allGranted ? AppColors.success : AppColors.primary,
             ),
           ),
           child: Column(
@@ -91,14 +94,23 @@ class PermissionStatusWidget extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(
-                    allGranted ? Icons.check_circle_rounded : Icons.warning_rounded,
-                    color: allGranted ? AppColors.success : AppColors.error,
-                    size: 20.sp,
+                  Container(
+                    padding: EdgeInsets.all(6.w),
+                    decoration: BoxDecoration(
+                      color: allGranted ? AppColors.success : AppColors.warning,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      allGranted ? Icons.check : Icons.priority_high_rounded,
+                      color: Colors.white,
+                      size: 14.sp,
+                    ),
                   ),
                   SizedBox(width: 10.w),
                   Text(
-                    allGranted ? 'Hệ thống đã sẵn sàng' : 'Cần cấp quyền hoạt động chính',
+                    allGranted
+                        ? 'Hệ thống đã sẵn sàng'
+                        : 'Cần cấp quyền hoạt động chính',
                     style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 14.sp,
@@ -154,26 +166,27 @@ class _PermissionRow extends StatelessWidget {
             ? Container(
                 padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.12),
+                  color: AppColors.success,
                   borderRadius: BorderRadius.circular(6.r),
                 ),
                 child: Text(
                   'Đã cấp',
                   style: TextStyle(
-                    color: AppColors.success,
+                    color: Colors.white,
                     fontSize: 10.sp,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               )
             : GestureDetector(
                 onTap: onTap,
                 child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.15),
+                    color: AppColors.brandBackground,
                     borderRadius: BorderRadius.circular(6.r),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+                    border: Border.all(color: AppColors.primary),
                   ),
                   child: Text(
                     'Cấp quyền',

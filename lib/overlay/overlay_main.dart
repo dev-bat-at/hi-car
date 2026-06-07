@@ -33,7 +33,7 @@ class OverlayStrip extends StatefulWidget {
 
 class _OverlayStripState extends State<OverlayStrip> {
   static const Color _neonCyan = Color(0xFF00E5FF);
-  static const Color _deepRed = Color(0xFFE91E63);
+  static const Color _skyBlue = Color(0xFF005CFF);
   bool _isPlaying = false;
   String? messageFromOverlay;
   BoxShape _currentShape = BoxShape.circle;
@@ -93,55 +93,47 @@ class _OverlayStripState extends State<OverlayStrip> {
       elevation: 0.0,
       child: Stack(
         children: [
-          // Background/Expansion gesture layer
-          GestureDetector(
-            onTap: () async {
-              print('Background click detected');
-              if (_currentShape == BoxShape.rectangle) {
-                await FlutterOverlayWindow.resizeOverlay(
-                  _toPhysicalPixels(50),
-                  _toPhysicalPixels(100),
-                  true,
-                );
-                setState(() {
-                  _currentShape = BoxShape.circle;
-                });
-              } else {
-                await FlutterOverlayWindow.resizeOverlay(
-                  WindowSize.matchParent,
-                  WindowSize.matchParent,
-                  false,
-                );
-                setState(() {
-                  _currentShape = BoxShape.rectangle;
-                });
-              }
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    _deepRed.withOpacity(0.85),
-                    Colors.black.withOpacity(0.9),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: _neonCyan.withOpacity(0.5),
-                  width: 1.5,
+          // 1. Background layer
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () async {
+                if (_currentShape == BoxShape.rectangle) {
+                  await FlutterOverlayWindow.resizeOverlay(
+                    _toPhysicalPixels(50),
+                    _toPhysicalPixels(100),
+                    true,
+                  );
+                  setState(() {
+                    _currentShape = BoxShape.circle;
+                  });
+                } else {
+                  await FlutterOverlayWindow.resizeOverlay(
+                    WindowSize.matchParent,
+                    WindowSize.matchParent,
+                    false,
+                  );
+                  setState(() {
+                    _currentShape = BoxShape.rectangle;
+                  });
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _skyBlue,
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 1.5,
+                  ),
                 ),
               ),
             ),
           ),
-          // Buttons layer - Use IgnorePointer on the Column to let events pass through
-          // but wrap buttons in their own GestureDetector
+          // 2. Buttons layer
           Positioned.fill(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Nút điều khiển nhạc
                 Expanded(
                   child: _buildNeonButton(
                     icon: _isPlaying ? Icons.pause : Icons.play_arrow,
@@ -150,15 +142,14 @@ class _OverlayStripState extends State<OverlayStrip> {
                     onTap: _toggleMusic,
                   ),
                 ),
-                // Nút mở ứng dụng
                 Expanded(
                   child: _buildNeonButton(
                     icon: Icons.open_in_new_rounded,
                     iconColor: Colors.white,
                     isGlow: false,
                     onTap: () {
-                      _openApp();
                       print('Nhấn mở app');
+                      _openApp();
                     },
                   ),
                 ),
@@ -185,15 +176,9 @@ class _OverlayStripState extends State<OverlayStrip> {
           height: 44,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.black.withValues(alpha: 0.4),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 4,
-                offset: const Offset(1, 1),
-              ),
-            ],
+            color: Color(0xFF0A1929),
+            border: Border.all(color: Colors.white),
+            boxShadow: null,
           ),
           child: Center(
             child: Icon(
