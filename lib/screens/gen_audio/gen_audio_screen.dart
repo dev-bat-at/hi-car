@@ -297,7 +297,7 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                         ),
                         child: Row(
                           children: [
-                            GestureDetector(
+                            _ScaleButton(
                               onTap: () {
                                 if (isPlayingCurrent) {
                                   audioProvider.stopAudio();
@@ -316,11 +316,9 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
                                 ),
                                 child: Icon(
                                   isPlayingCurrent
-                                      ? Icons.pause_rounded
+                                      ? Icons.stop_rounded
                                       : Icons.play_arrow_rounded,
-                                  color: isPlayingCurrent
-                                      ? AppColors.primary
-                                      : AppColors.textPrimary,
+                                  color: Colors.white,
                                   size: 20.sp,
                                 ),
                               ),
@@ -575,6 +573,54 @@ class _TypeSelectCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ScaleButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+
+  const _ScaleButton({required this.child, this.onTap});
+
+  @override
+  State<_ScaleButton> createState() => _ScaleButtonState();
+}
+
+class _ScaleButtonState extends State<_ScaleButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => widget.onTap != null ? _controller.forward() : null,
+      onTapUp: (_) => _controller.reverse(),
+      onTapCancel: () => _controller.reverse(),
+      onTap: widget.onTap,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: widget.child,
       ),
     );
   }

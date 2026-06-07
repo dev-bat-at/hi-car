@@ -129,21 +129,29 @@ class _AudioCard extends StatelessWidget {
       child: Row(
         children: [
           // Type indicator
-          Container(
-            width: 44.w,
-            height: 44.w,
-            decoration: BoxDecoration(
-              color: typeColor,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => audioProvider.playAudio(audio),
               borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Icon(
-              audio.type == AudioType.greeting
-                  ? Icons.waving_hand_rounded
-                  : audio.type == AudioType.goodbye
-                      ? Icons.directions_car_rounded
-                      : Icons.audiotrack_rounded,
-              color: Colors.white,
-              size: 20.sp,
+              splashColor: Colors.white.withOpacity(0.3),
+              child: Container(
+                width: 44.w,
+                height: 44.w,
+                decoration: BoxDecoration(
+                  color: typeColor,
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Icon(
+                  audio.type == AudioType.greeting
+                      ? Icons.waving_hand_rounded
+                      : audio.type == AudioType.goodbye
+                          ? Icons.directions_car_rounded
+                          : Icons.audiotrack_rounded,
+                  color: Colors.white,
+                  size: 20.sp,
+                ),
+              ),
             ),
           ),
 
@@ -304,11 +312,12 @@ class _AudioActions extends StatelessWidget {
           label: 'Đặt làm tạm biệt',
           color: AppColors.success,
         ),
+        const PopupMenuDivider(),
         _popupItem(
           value: 'delete',
           icon: Icons.delete_outline_rounded,
           label: 'Xoá',
-          color: AppColors.error,
+          color: const Color(0xFFFF5252),
         ),
       ],
     );

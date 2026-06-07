@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 @pragma('vm:entry-point')
@@ -34,7 +35,8 @@ class OverlayStrip extends StatefulWidget {
 class _OverlayStripState extends State<OverlayStrip> {
   static const Color _neonCyan = Color(0xFF00E5FF);
   static const Color _skyBlue = Color(0xFF005CFF);
-  bool _isPlaying = false;
+  bool _isGreetingPlaying = false;
+  bool _isGoodbyePlaying = false;
   String? messageFromOverlay;
   BoxShape _currentShape = BoxShape.circle;
 
@@ -50,9 +52,12 @@ class _OverlayStripState extends State<OverlayStrip> {
     super.initState();
     // Listen for data from the main app if needed
     FlutterOverlayWindow.overlayListener.listen((data) {
-      if (data is Map && data.containsKey('isPlaying')) {
+      if (data is Map) {
         setState(() {
-          _isPlaying = data['isPlaying'];
+          if (data.containsKey('isPlaying')) {
+            _isGreetingPlaying = data['isPlaying'];
+          }
+          // We can expand this logic if main app sends more specific states
         });
       }
     });
@@ -77,9 +82,20 @@ class _OverlayStripState extends State<OverlayStrip> {
     }
   }
 
-  Future<void> _toggleMusic() async {
-    setState(() => _isPlaying = !_isPlaying);
-    await _sendAction(_isPlaying ? 'play_greeting' : 'stop_audio');
+  Future<void> _toggleGreeting() async {
+    setState(() {
+      _isGreetingPlaying = !_isGreetingPlaying;
+      if (_isGreetingPlaying) _isGoodbyePlaying = false;
+    });
+    await _sendAction(_isGreetingPlaying ? 'play_greeting' : 'stop_audio');
+  }
+
+  Future<void> _toggleGoodbye() async {
+    setState(() {
+      _isGoodbyePlaying = !_isGoodbyePlaying;
+      if (_isGoodbyePlaying) _isGreetingPlaying = false;
+    });
+    await _sendAction(_isGoodbyePlaying ? 'play_goodbye' : 'stop_audio');
   }
 
   Future<void> _openApp() async {
@@ -100,7 +116,7 @@ class _OverlayStripState extends State<OverlayStrip> {
                 if (_currentShape == BoxShape.rectangle) {
                   await FlutterOverlayWindow.resizeOverlay(
                     _toPhysicalPixels(50),
-                    _toPhysicalPixels(100),
+                    _toPhysicalPixels(150), // Increased height for 3 buttons
                     true,
                   );
                   setState(() {
@@ -136,15 +152,27 @@ class _OverlayStripState extends State<OverlayStrip> {
               children: [
                 Expanded(
                   child: _buildNeonButton(
-                    icon: _isPlaying ? Icons.pause : Icons.play_arrow,
-                    iconColor: _isPlaying ? _neonCyan : Colors.white,
-                    isGlow: _isPlaying,
-                    onTap: _toggleMusic,
+                    icon: _isGreetingPlaying
+                        ? Icons.stop_rounded
+                        : Icons.waving_hand_rounded,
+                    iconColor: _isGreetingPlaying ? _neonCyan : Colors.white,
+                    isGlow: _isGreetingPlaying,
+                    onTap: _toggleGreeting,
                   ),
                 ),
                 Expanded(
                   child: _buildNeonButton(
-                    icon: Icons.open_in_new_rounded,
+                    icon: _isGoodbyePlaying
+                        ? Icons.stop_rounded
+                        : Icons.directions_car_rounded,
+                    iconColor: _isGoodbyePlaying ? _neonCyan : Colors.white,
+                    isGlow: _isGoodbyePlaying,
+                    onTap: _toggleGoodbye,
+                  ),
+                ),
+                Expanded(
+                  child: _buildNeonButton(
+                    icon: Icons.launch_rounded,
                     iconColor: Colors.white,
                     isGlow: false,
                     onTap: () {
@@ -167,32 +195,97 @@ class _OverlayStripState extends State<OverlayStrip> {
     required bool isGlow,
     required VoidCallback onTap,
   }) {
-    return Center(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Color(0xFF0A1929),
-            border: Border.all(color: Colors.white),
-            boxShadow: null,
-          ),
-          child: Center(
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 26,
-              shadows: isGlow
-                  ? [
-                      Shadow(color: iconColor, blurRadius: 15),
-                    ]
-                  : null,
+    return _OverlayScaleButton(
+      onTap: onTap,
+      child: Center(
+        child: ClipOval(
+          child: Material(
+            color: const Color(0xFF0A1929),
+            child: InkWell(
+              onTap: onTap,
+              splashColor: iconColor.withOpacity(0.3),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white),
+                  boxShadow: isGlow
+                      ? [
+                          BoxShadow(
+                            color: iconColor.withOpacity(0.5),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: Icon(
+                    icon,
+                    color: iconColor,
+                    size: 24,
+                    shadows: isGlow
+                        ? [
+                            Shadow(color: iconColor, blurRadius: 15),
+                          ]
+                        : null,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _OverlayScaleButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  const _OverlayScaleButton({required this.child, required this.onTap});
+
+  @override
+  State<_OverlayScaleButton> createState() => _OverlayScaleButtonState();
+}
+
+class _OverlayScaleButtonState extends State<_OverlayScaleButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        _controller.forward().then((_) => _controller.reverse());
+        HapticFeedback.lightImpact();
+        widget.onTap();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: widget.child,
       ),
     );
   }

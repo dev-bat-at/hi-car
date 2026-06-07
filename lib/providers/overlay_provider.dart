@@ -31,7 +31,7 @@ class OverlayDebugStore {
 
 class OverlayProvider extends ChangeNotifier {
   static const double _overlayWindowWidth = 60.0;
-  static const double _overlayWindowHeight = 130.0;
+  static const double _overlayWindowHeight = 150.0;
 
   bool _isOverlayShowing = false;
   bool _hasPermission = false;
