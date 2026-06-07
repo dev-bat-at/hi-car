@@ -195,6 +195,7 @@ class _AudioCard extends StatelessWidget {
                     if (audio.isActiveGreeting)
                       _StatusBadge(
                           label: '✓ Lời chào', color: AppColors.primary),
+                    SizedBox(width: 8.w),
                     if (audio.isActiveGoodbye)
                       _StatusBadge(
                           label: '✓ Tạm biệt', color: AppColors.success),

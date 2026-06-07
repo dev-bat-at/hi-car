@@ -350,15 +350,43 @@ class _FloatingBubbleToggleCard extends StatelessWidget {
               Switch(
                 value: isEnabled,
                 onChanged: (value) async {
-                  final enabled = await overlayProvider.setBubbleEnabled(value);
-                  if (!context.mounted) return;
-                  if (value && !enabled) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            'Cần cấp quyền hiển thị nổi để bật bong bóng trợ lý.'),
-                      ),
-                    );
+                  if (value) {
+                    final permProvider = context.read<PermissionProvider>();
+
+                    // 1. Request background permissions first (Notif + Battery)
+                    await permProvider.requestBackgroundExecutionPermissions();
+
+                    final enabled =
+                        await overlayProvider.setBubbleEnabled(true);
+                    if (!context.mounted) return;
+
+                    if (!enabled) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                              'Bạn cần cấp đầy đủ quyền (Thông báo, Pin, Nút nổi) để dùng bong bóng.'),
+                        ),
+                      );
+                    } else if (permProvider.isXiaomi) {
+                      // Reminder for Xiaomi users
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          backgroundColor: AppColors.card,
+                          title: const Text('Lưu ý cho máy Xiaomi'),
+                          content: const Text(
+                              'Nếu nút bấm không hoạt động, bạn hãy vào Cài đặt ứng dụng -> Quyền khác -> Bật "Hiển thị cửa sổ pop-up khi chạy nền".'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Đã hiểu'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  } else {
+                    await overlayProvider.setBubbleEnabled(false);
                   }
                 },
               ),

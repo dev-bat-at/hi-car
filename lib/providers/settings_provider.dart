@@ -11,6 +11,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _showNotification = true;
   String _connectionMode =
       'phone_bluetooth'; // 'phone_bluetooth', 'phone_android_auto', 'android_screen_box'
+  String? _pendingConnectionMode;
   bool _isBetaMode = false;
 
   bool get autoPlayEnabled => _autoPlayEnabled;
@@ -19,6 +20,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get androidAutoEnabled => _androidAutoEnabled;
   bool get showNotification => _showNotification;
   String get connectionMode => _connectionMode;
+  String? get pendingConnectionMode => _pendingConnectionMode;
   bool get isBetaMode => _isBetaMode;
 
   Future<void> init() async {
@@ -77,14 +79,22 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setConnectionMode(String mode) async {
-    _connectionMode = mode;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('connection_mode', mode);
-    try {
-      await BluetoothChannel.instance.setConnectionMode(mode);
-    } catch (e) {
-      debugPrint('Native BluetoothChannel error on setConnectionMode: $e');
+    _pendingConnectionMode = mode;
+    notifyListeners();
+  }
+
+  Future<void> commitSettings() async {
+    if (_pendingConnectionMode != null) {
+      _connectionMode = _pendingConnectionMode!;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('connection_mode', _connectionMode);
+      _pendingConnectionMode = null;
     }
+    notifyListeners();
+  }
+
+  void cancelPendingSettings() {
+    _pendingConnectionMode = null;
     notifyListeners();
   }
 

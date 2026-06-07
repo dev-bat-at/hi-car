@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
 
 class PermissionStatus {
   final bool bluetooth;
@@ -59,15 +61,24 @@ class PermissionStatus {
 class PermissionProvider extends ChangeNotifier {
   PermissionStatus _status = const PermissionStatus();
   bool _isChecking = false;
+  bool _isXiaomi = false;
 
   PermissionStatus get status => _status;
   bool get isChecking => _isChecking;
+  bool get isXiaomi => _isXiaomi;
 
   Future<void> checkAllPermissions() async {
     _isChecking = true;
     notifyListeners();
 
     try {
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        _isXiaomi = androidInfo.manufacturer.toLowerCase().contains('xiaomi') ||
+            androidInfo.manufacturer.toLowerCase().contains('poco') ||
+            androidInfo.manufacturer.toLowerCase().contains('redmi');
+      }
       // Small delay to ensure system settings are synchronized
       await Future.delayed(const Duration(milliseconds: 300));
 
@@ -124,6 +135,16 @@ class PermissionProvider extends ChangeNotifier {
     final result = await Permission.ignoreBatteryOptimizations.request();
     await checkAllPermissions();
     return result.isGranted;
+  }
+
+  Future<bool> requestBackgroundExecutionPermissions() async {
+    // 1. Notification
+    await requestNotificationPermission();
+    // 2. Battery
+    await requestBatteryOptimizationPermission();
+
+    await checkAllPermissions();
+    return _status.notification && _status.batteryOptimization;
   }
 
   Future<void> requestAllPermissionsForMode(String mode) async {

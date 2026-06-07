@@ -25,6 +25,14 @@ class BootReceiver : BroadcastReceiver() {
                     AudioForegroundService.ACTION_START
                 }
             }
+
+            // Launch UI if in Box mode (requires SYSTEM_ALERT_WINDOW on newer Android)
+            if (connectionMode == "android_screen_box") {
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
             } else {

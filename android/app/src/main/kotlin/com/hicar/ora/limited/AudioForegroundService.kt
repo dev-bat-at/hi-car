@@ -336,7 +336,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Giọng Thương Gia")
             .setContentText("Hệ thống trợ lý xe đang hoạt động")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_car)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)

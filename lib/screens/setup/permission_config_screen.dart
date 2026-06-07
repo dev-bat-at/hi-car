@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
 import '../../providers/permission_provider.dart';
+import '../../providers/settings_provider.dart';
 
 class PermissionConfigScreen extends StatefulWidget {
   final bool isFromSettings;
@@ -44,7 +45,12 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
   @override
   Widget build(BuildContext context) {
     final permissionProvider = context.watch<PermissionProvider>();
+    final settingsProvider = context.watch<SettingsProvider>();
     final status = permissionProvider.status;
+    final activeMode = settingsProvider.pendingConnectionMode ??
+        settingsProvider.connectionMode;
+    final isBoxMode = activeMode == 'android_screen_box';
+    final isXiaomi = permissionProvider.isXiaomi;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -133,16 +139,38 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
                         }
                       },
                     ),
+                    if (isBoxMode)
+                      _buildPermissionTile(
+                        title: 'Tự khởi động (Autostart)',
+                        subtitle:
+                            'Cho phép app tự chào và hiện lên khi vừa bật màn hình xe.',
+                        icon: Icons.auto_mode_rounded,
+                        value: false, // System setting dependent
+                        onChanged: (val) {
+                          permissionProvider.openSettings();
+                        },
+                        trailingText: 'CÀI ĐẶT',
+                      ),
+                    if (isXiaomi)
+                      _buildPermissionTile(
+                        title: 'Hiển thị Pop-up nền (MIUI)',
+                        subtitle:
+                            'Bắt buộc để bong bóng có thể mở được App trên Xiaomi.',
+                        icon: Icons.app_registration_rounded,
+                        value: false, // System setting dependent
+                        onChanged: (val) {
+                          permissionProvider.openSettings();
+                        },
+                        trailingText: 'CÀI ĐẶT',
+                      ),
                     _buildPermissionTile(
-                      title: 'Chạy ngầm & Khởi động',
+                      title: 'Chạy ngầm hệ thống',
                       subtitle:
-                          'Đảm bảo ứng dụng luôn giữ kết nối và tự bật khi bạn nổ máy xe.',
+                          'Giữ cho trợ lý luôn sẵn sàng khi bạn nổ máy xe.',
                       icon: Icons.bolt_rounded,
                       value: status.bootComplete,
                       onChanged: (val) {
                         if (val) {
-                          // Usually handled by battery optimization + manifest
-                          // Show info dialog
                           _showKeepAliveInfo(context);
                         } else {
                           _showDisableInfo(context);
@@ -241,7 +269,12 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
     );
   }
 
-  void _handleRestart(BuildContext context) {
+  void _handleRestart(BuildContext context) async {
+    // Commit the settings (especially pending connection mode)
+    await context.read<SettingsProvider>().commitSettings();
+
+    if (!mounted) return;
+
     // Show a loading or success message before "restarting"
     showDialog(
       context: context,
@@ -284,6 +317,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
     required IconData icon,
     required bool value,
     required ValueChanged<bool> onChanged,
+    String? trailingText,
   }) {
     return Container(
       margin: EdgeInsets.only(bottom: 16.h),
@@ -323,14 +357,26 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
             fontSize: 11.sp,
           ),
         ),
-        trailing: Switch(
-          value: value,
-          onChanged: onChanged,
-          activeColor: Colors.white,
-          activeTrackColor: AppColors.primary,
-          inactiveThumbColor: AppColors.textHint,
-          inactiveTrackColor: AppColors.cardElevated,
-        ),
+        trailing: trailingText != null
+            ? TextButton(
+                onPressed: () => onChanged(true),
+                child: Text(
+                  trailingText,
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: Colors.white,
+                activeTrackColor: AppColors.primary,
+                inactiveThumbColor: AppColors.textHint,
+                inactiveTrackColor: AppColors.cardElevated,
+              ),
       ),
     );
   }
