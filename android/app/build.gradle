@@ -74,6 +74,7 @@ android {
             // signingConfig signingConfigs.release
             shrinkResources false
             minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

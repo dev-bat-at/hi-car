@@ -197,52 +197,70 @@ class AudioProvider extends ChangeNotifier {
 
   Future<bool> playGreetingViaNative() async {
     final audio = activeGreeting;
-    if (audio == null) {
+    String? path;
+
+    if (audio != null) {
+      path = await AudioRepository.instance.getGreetingAudioPath(audio);
+    } else {
+      // Fallback: audioList may not be loaded yet, read persisted path
+      final prefs = await SharedPreferences.getInstance();
+      path = prefs.getString('greeting_audio_path');
+      debugPrint(
+          'AudioProvider: No active greeting in list, fallback path=$path');
+    }
+
+    if (path == null || path.isEmpty) {
       debugPrint('AudioProvider: No active greeting found');
       return false;
     }
 
-    final path = await AudioRepository.instance.getGreetingAudioPath(audio);
-    if (path != null) {
-      try {
-        _isNativeGreetingPlaying = true;
-        _isNativeGoodbyePlaying = false;
-        notifyListeners();
+    try {
+      _isNativeGreetingPlaying = true;
+      _isNativeGoodbyePlaying = false;
+      notifyListeners();
 
-        await ServiceChannel.instance.playGreeting(audioPath: path);
-        _startWatchdog(audio.durationSeconds);
-        return true;
-      } catch (e) {
-        _stopNativePlaybackState();
-        return false;
-      }
+      await ServiceChannel.instance.playGreeting(audioPath: path);
+      _startWatchdog(audio?.durationSeconds ?? 15);
+      return true;
+    } catch (e) {
+      debugPrint('AudioProvider: playGreetingViaNative error: $e');
+      _stopNativePlaybackState();
+      return false;
     }
-    return false;
   }
 
   Future<bool> playGoodbyeViaNative() async {
     final audio = activeGoodbye;
-    if (audio == null) {
+    String? path;
+
+    if (audio != null) {
+      path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
+    } else {
+      // Fallback: audioList may not be loaded yet, read persisted path
+      final prefs = await SharedPreferences.getInstance();
+      path = prefs.getString('goodbye_audio_path');
+      debugPrint(
+          'AudioProvider: No active goodbye in list, fallback path=$path');
+    }
+
+    if (path == null || path.isEmpty) {
       debugPrint('AudioProvider: No active goodbye found');
       return false;
     }
 
-    final path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
-    if (path != null) {
-      try {
-        _isNativeGoodbyePlaying = true;
-        _isNativeGreetingPlaying = false;
-        notifyListeners();
+    try {
+      _isNativeGoodbyePlaying = true;
+      _isNativeGreetingPlaying = false;
+      notifyListeners();
 
-        await ServiceChannel.instance.playGoodbye(audioPath: path);
-        _startWatchdog(audio.durationSeconds);
-        return true;
-      } catch (e) {
-        _stopNativePlaybackState();
-        return false;
-      }
+      await ServiceChannel.instance.playGoodbye(audioPath: path);
+      _startWatchdog(audio?.durationSeconds ?? 15);
+      return true;
+    } catch (e) {
+      debugPrint('AudioProvider: playGoodbyeViaNative error: $e');
+      _stopNativePlaybackState();
+      return false;
     }
-    return false;
   }
 
   Future<void> stopNativeAudio() async {

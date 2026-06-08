@@ -191,27 +191,25 @@ class BluetoothReceiver : BroadcastReceiver() {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
 
-        // Notify MainActivity (if active) so UI updates connection state instantly
-        MainActivity.instance?.let { activity ->
-            activity.runOnUiThread {
-                when (intent.action) {
-                    BluetoothDevice.ACTION_FOUND -> {
-                        activity.bluetoothChannel?.invokeMethod("onDeviceFound", mapOf(
-                            "name" to (device.name ?: "Unknown Device"),
-                            "address" to deviceAddress,
-                            "isConnected" to false
-                        ))
-                    }
-                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
-                        activity.bluetoothChannel?.invokeMethod("onDiscoveryFinished", null)
-                    }
-                    else -> {
-                        activity.bluetoothChannel?.invokeMethod("onDeviceConnectionChanged", mapOf(
-                            "address" to deviceAddress,
-                            "action" to intent.action
-                        ))
-                    }
-                }
+        // 🟢 SỬA ĐỔI CHÍNH: Thay đổi từ gọi instance sang biến tĩnh tĩnh toàn cục để tránh lỗi Unresolved reference
+        // Send Bluetooth events to Flutter via Plugin
+        when (intent.action) {
+            BluetoothDevice.ACTION_FOUND -> {
+                HiCarPlugin.instance?.invokeBluetoothMethod("onDeviceFound", mapOf(
+                    "name" to (device.name ?: "Unknown Device"),
+                    "address" to deviceAddress,
+                    "isConnected" to false
+                ))
+            }
+            BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                HiCarPlugin.instance?.invokeBluetoothMethod("onDiscoveryFinished", null)
+            }
+            else -> {
+                // Connection state changes
+                HiCarPlugin.instance?.invokeBluetoothMethod("onDeviceConnectionChanged", mapOf(
+                    "address" to deviceAddress,
+                    "action" to intent.action
+                ))
             }
         }
 
@@ -235,7 +233,11 @@ class BluetoothReceiver : BroadcastReceiver() {
                 val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
                     action = AudioForegroundService.ACTION_BLUETOOTH_DISCONNECTED
                 }
-                context.startService(serviceIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
             }
         }
     }

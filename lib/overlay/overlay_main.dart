@@ -6,11 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-@pragma('vm:entry-point')
-void overlayMain() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const OverlayApp());
-}
+// @pragma('vm:entry-point')
+// void overlayMain() {
+//   DartPluginRegistrant.ensureInitialized();
+//   WidgetsFlutterBinding.ensureInitialized();
+//   runApp(const OverlayApp());
+// }
 
 class OverlayApp extends StatelessWidget {
   const OverlayApp({super.key});
@@ -193,26 +194,26 @@ class _OverlayStripState extends State<OverlayStrip> {
               ],
             ),
           ),
-          if (_errorMessage != null)
-            Positioned(
-              left: 10,
-              bottom: 10,
-              right: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _errorMessage!,
-                  style: const TextStyle(color: Colors.white, fontSize: 10),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                ),
-              ),
-            ),
+          // if (_errorMessage != null)
+          //   Positioned(
+          //     left: 10,
+          //     bottom: 10,
+          //     right: 10,
+          //     child: Container(
+          //       padding:
+          //           const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          //       decoration: BoxDecoration(
+          //         color: Colors.redAccent.withOpacity(0.9),
+          //         borderRadius: BorderRadius.circular(8),
+          //       ),
+          //       child: Text(
+          //         _errorMessage!,
+          //         style: const TextStyle(color: Colors.white, fontSize: 10),
+          //         textAlign: TextAlign.center,
+          //         maxLines: 2,
+          //       ),
+          //     ),
+          //   ),
         ],
       ),
     );

@@ -10,6 +10,8 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.media.MediaBrowserServiceCompat
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.embedding.engine.FlutterEngine
 
 /**
  * AudioForegroundService - Extends MediaBrowserServiceCompat for Android Auto support.
@@ -21,6 +23,7 @@ import androidx.media.MediaBrowserServiceCompat
  * - Audio focus management (grabs & releases properly)
  * - Delayed auto-play on Bluetooth connection
  * - Restarts itself if killed (START_STICKY)
+ * - Nạp tĩnh MethodChannel để tránh lỗi MissingPluginException ở bản Release
  */
 class AudioForegroundService : MediaBrowserServiceCompat() {
 
@@ -64,6 +67,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         acquireWakeLock()
         buildAudioFocusRequest()
     }
+
 
     private fun loadPrefs() {
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -309,11 +313,9 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             .build()
         mediaSession?.setPlaybackState(playbackState)
 
-        // Notify MainActivity so it can inform Flutter
+        // Notify Flutter when playback completes via Plugin
         if (state == PlaybackStateCompat.STATE_STOPPED) {
-            MainActivity.instance?.runOnUiThread {
-                MainActivity.instance?.serviceChannel?.invokeMethod("onPlaybackComplete", null)
-            }
+            HiCarPlugin.instance?.invokeServiceMethod("onPlaybackComplete")
         }
     }
 
