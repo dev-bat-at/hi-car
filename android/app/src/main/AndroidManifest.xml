@@ -43,11 +43,12 @@
             </intent-filter>
         </activity>
 
-        <!-- ===== BOOT RECEIVER ===== -->
+        <!-- Cho phép khởi chạy khi máy đang khóa (Direct Boot) -->
         <receiver
             android:name="com.hicar.ora.limited.BootReceiver"
             android:exported="true"
-            android:enabled="true">
+            android:enabled="true"
+            android:directBootAware="true"> 
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -68,11 +69,12 @@
             </intent-filter>
         </receiver>
 
-        <!-- ===== AUDIO FOREGROUND SERVICE (MediaBrowserService for Android Auto) ===== -->
+        <!-- Cho phép phát nhạc khi máy đang khóa (Direct Boot) -->
         <service
             android:name="com.hicar.ora.limited.AudioForegroundService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback"
+            android:directBootAware="true"
             android:stopWithTask="false">
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />

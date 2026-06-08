@@ -1,3 +1,4 @@
+import 'dart:io' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:hi_car/providers/permission_provider.dart';
@@ -131,19 +132,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                   SizedBox(height: 16.h),
 
-                  // Floating bubble status toggle
-                  _FloatingBubbleToggleCard(overlayProvider: overlayProvider),
-
-                  // const _OverlayDebugCard(),
+                  // Floating bubble status toggle (Chỉ hiện trên Android)
+                  if (io.Platform.isAndroid)
+                    _FloatingBubbleToggleCard(overlayProvider: overlayProvider),
 
                   SizedBox(height: 16.h),
 
                   // Permission status panel
                   const PermissionStatusWidget(),
 
-                  // Bluetooth auto-play trigger config panel
-                  if (settingsProvider.connectionMode !=
-                      'android_screen_box') ...[
+                  // Bluetooth auto-play trigger config panel (Chỉ hiện trên Android)
+                  // Bluetooth panel (CHỈ dành cho mode Bluetooth Điện thoại)
+                  if (io.Platform.isAndroid &&
+                      settingsProvider.connectionMode == 'phone_bluetooth') ...[
                     SizedBox(height: 16.h),
                     const BluetoothPanelWidget(),
                   ],

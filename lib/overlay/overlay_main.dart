@@ -6,12 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-// @pragma('vm:entry-point')
-// void overlayMain() {
-//   DartPluginRegistrant.ensureInitialized();
-//   WidgetsFlutterBinding.ensureInitialized();
-//   runApp(const OverlayApp());
-// }
+@pragma('vm:entry-point')
+void overlayMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const OverlayApp());
+}
 
 class OverlayApp extends StatelessWidget {
   const OverlayApp({super.key});
@@ -93,19 +92,13 @@ class _OverlayStripState extends State<OverlayStrip> {
   }
 
   Future<void> _toggleGreeting() async {
-    setState(() {
-      _isGreetingPlaying = !_isGreetingPlaying;
-      if (_isGreetingPlaying) _isGoodbyePlaying = false;
-    });
-    await _sendAction(_isGreetingPlaying ? 'play_greeting' : 'stop_audio');
+    // Không tự setState ở đây, để Main App điều khiển qua listener
+    await _sendAction(_isGreetingPlaying ? 'stop_audio' : 'play_greeting');
   }
 
   Future<void> _toggleGoodbye() async {
-    setState(() {
-      _isGoodbyePlaying = !_isGoodbyePlaying;
-      if (_isGoodbyePlaying) _isGreetingPlaying = false;
-    });
-    await _sendAction(_isGoodbyePlaying ? 'play_goodbye' : 'stop_audio');
+    // Không tự setState ở đây, để Main App điều khiển qua listener
+    await _sendAction(_isGoodbyePlaying ? 'stop_audio' : 'play_goodbye');
   }
 
   Future<void> _openApp() async {
@@ -194,26 +187,26 @@ class _OverlayStripState extends State<OverlayStrip> {
               ],
             ),
           ),
-          // if (_errorMessage != null)
-          //   Positioned(
-          //     left: 10,
-          //     bottom: 10,
-          //     right: 10,
-          //     child: Container(
-          //       padding:
-          //           const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          //       decoration: BoxDecoration(
-          //         color: Colors.redAccent.withOpacity(0.9),
-          //         borderRadius: BorderRadius.circular(8),
-          //       ),
-          //       child: Text(
-          //         _errorMessage!,
-          //         style: const TextStyle(color: Colors.white, fontSize: 10),
-          //         textAlign: TextAlign.center,
-          //         maxLines: 2,
-          //       ),
-          //     ),
-          //   ),
+          if (_errorMessage != null)
+            Positioned(
+              left: 10,
+              bottom: 10,
+              right: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -235,8 +228,8 @@ class _OverlayStripState extends State<OverlayStrip> {
               onTap: onTap,
               splashColor: iconColor.withOpacity(0.3),
               child: Container(
-                width: 44,
-                height: 44,
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 1.0),
@@ -250,7 +243,7 @@ class _OverlayStripState extends State<OverlayStrip> {
                     child: Icon(
                       icon,
                       color: iconColor,
-                      size: 24,
+                      size: 48,
                       shadows: isGlow
                           ? [
                               Shadow(color: iconColor, blurRadius: 15),
@@ -324,18 +317,21 @@ class _PulseWrapperState extends State<_PulseWrapper>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: widget.iconColor.withOpacity(0.4 * _controller.value),
-                blurRadius: 8 * _controller.value,
-                spreadRadius: 4 * _controller.value,
-              ),
-            ],
+        return Transform.scale(
+          scale: 1.0 + (0.1 * _controller.value), // Icon to ra 10% theo nhịp
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: widget.iconColor.withOpacity(0.5 * _controller.value),
+                  blurRadius: 15 * _controller.value,
+                  spreadRadius: 5 * _controller.value,
+                ),
+              ],
+            ),
+            child: child,
           ),
-          child: child,
         );
       },
       child: widget.child,

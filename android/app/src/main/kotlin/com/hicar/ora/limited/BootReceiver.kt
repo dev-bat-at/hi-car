@@ -15,37 +15,24 @@ class BootReceiver : BroadcastReceiver() {
         val validActions = listOf(
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
-            "android.intent.action.QUICKBOOT_POWERON" // Hỗ trợ khởi động nhanh trên một số dòng đầu DVD ô tô chuyên dụng
+            "android.intent.action.QUICKBOOT_POWERON"
         )
 
         if (intent.action in validActions) {
-            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
+            val storageContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                context.createDeviceProtectedStorageContext()
+            } else {
+                context
+            }
+            val prefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val connectionMode = prefs.getString("flutter.connection_mode", "android_screen_mode") ?: "android_screen_mode"
 
             val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
-                action = if (connectionMode == "android_screen_box") {
-                    AudioForegroundService.ACTION_PLAY_GREETING
-                } else {
-                    AudioForegroundService.ACTION_START
-                }
+                action = AudioForegroundService.ACTION_PLAY_GREETING
             }
 
-            // Launch UI nếu ở chế độ Android Box lắp trực tiếp vào xe
-            if (connectionMode == "android_screen_box") {
-                val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                launchIntent?.addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or 
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or 
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-                try {
-                    context.startActivity(launchIntent)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-
-            // Kích hoạt dịch vụ chạy ngầm an toàn theo phiên bản hệ điều hành
+            // 🟢 TẤT CẢ CÁC CHẾ ĐỘ: Chỉ phát ngầm (Background), không được tự ý mở App (UI)
+            // Nhạc sẽ vang lên ở dưới nền, màn hình xe vẫn giữ nguyên trạng thái cũ.
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent)

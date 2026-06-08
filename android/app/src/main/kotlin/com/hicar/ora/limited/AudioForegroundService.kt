@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media.MediaBrowserServiceCompat
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.FlutterEngine
+import java.io.File
 
 /**
  * AudioForegroundService - Extends MediaBrowserServiceCompat for Android Auto support.
@@ -70,7 +71,13 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
 
     private fun loadPrefs() {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val storageContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            applicationContext.createDeviceProtectedStorageContext()
+        } else {
+            applicationContext
+        }
+        
+        val prefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
         targetDeviceAddress = prefs.getString("flutter.target_device_address", "") ?: ""
         
@@ -85,6 +92,17 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         
         greetingAudioPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
         goodbyeAudioPath = prefs.getString("flutter.goodbye_audio_path", "") ?: ""
+
+        // 🟢 ƯU TIÊN: Nếu đang trong trạng thái khóa (Boot), dùng file trong vùng an toàn
+        val bootGreeting = File(storageContext.filesDir, "boot_greeting.mp3")
+        if (bootGreeting.exists()) {
+            greetingAudioPath = bootGreeting.absolutePath
+        }
+        
+        val bootGoodbye = File(storageContext.filesDir, "boot_goodbye.mp3")
+        if (bootGoodbye.exists()) {
+            goodbyeAudioPath = bootGoodbye.absolutePath
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -315,7 +333,10 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         // Notify Flutter when playback completes via Plugin
         if (state == PlaybackStateCompat.STATE_STOPPED) {
-            HiCarPlugin.instance?.invokeServiceMethod("onPlaybackComplete")
+            // Tăng độ trễ lên 1000ms (1 giây) để đảm bảo đồng bộ tuyệt đối
+            handler.postDelayed({
+                HiCarPlugin.instance?.invokeServiceMethod("onPlaybackComplete")
+            }, 1000)
         }
     }
 

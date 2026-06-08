@@ -98,14 +98,26 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                       SizedBox(height: 16.h),
                       _buildModeCard(
                         context,
-                        mode: 'android_screen_box',
-                        title: 'Màn Android độ / Android Box',
+                        mode: 'android_screen_mode',
+                        title: 'Màn hình Android độ',
                         description:
-                            'Chạy trực tiếp trên màn hình xe hoặc tự động chạy ngầm trên Box khi nổ máy.',
+                            'Cài trên màn hình xe. Tự mở app khi nổ máy và tự ẩn sau khi phát nhạc xong.',
                         icon: Icons.developer_board_rounded,
                         activeMode: activeMode,
                         onTap: () => setState(
-                            () => _selectedMode = 'android_screen_box'),
+                            () => _selectedMode = 'android_screen_mode'),
+                      ),
+                      SizedBox(height: 16.h),
+                      _buildModeCard(
+                        context,
+                        mode: 'android_box_mode',
+                        title: 'Android Box',
+                        description:
+                            'Cài trên cục Box. Tự phát nhạc ngầm ngay khi Box khởi động.',
+                        icon: Icons.settings_input_hdmi_rounded,
+                        activeMode: activeMode,
+                        onTap: () =>
+                            setState(() => _selectedMode = 'android_box_mode'),
                       ),
                     ],
                   ),
@@ -117,9 +129,10 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
                   label: 'TIẾP TỤC',
                   onTap: () async {
                     if (_selectedMode != null) {
-                      await context
-                          .read<SettingsProvider>()
-                          .setConnectionMode(_selectedMode!);
+                      final settings = context.read<SettingsProvider>();
+                      await settings.setConnectionMode(_selectedMode!);
+                      // 🟢 Lưu ngay lập tức thay vì đợi đến cuối
+                      await settings.commitSettings();
                     }
 
                     if (!mounted) return;
@@ -230,14 +243,17 @@ class _GlowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        height: 56.h,
+        height: isLandscape ? 44.h : 56.h, // 🟢 Giảm chiều cao khi xoay ngang
         decoration: BoxDecoration(
           color: AppColors.primary,
-          borderRadius: BorderRadius.circular(14.r),
+          borderRadius: BorderRadius.circular(12.r),
           boxShadow: null,
         ),
         child: Center(
@@ -245,7 +261,7 @@ class _GlowButton extends StatelessWidget {
             label,
             style: TextStyle(
               color: Colors.white,
-              fontSize: 15.sp,
+              fontSize: isLandscape ? 13.sp : 15.sp, // 🟢 Giảm font size nhẹ
               fontWeight: FontWeight.bold,
               letterSpacing: 2.0,
             ),

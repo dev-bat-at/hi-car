@@ -27,6 +27,7 @@ class AudioProvider extends ChangeNotifier {
   String? _activeGoodbyeId;
   bool _isNativeGreetingPlaying = false;
   bool _isNativeGoodbyePlaying = false;
+  VoidCallback? onNativePlaybackComplete; // Callback for UI to react
   Timer? _playbackWatchdog;
 
   List<AudioModel> get audioList {
@@ -275,8 +276,8 @@ class AudioProvider extends ChangeNotifier {
 
   void _startWatchdog(int durationSeconds) {
     _playbackWatchdog?.cancel();
-    // Use duration + 2s buffer, or default 15s if duration is unknown/zero
-    final timeout = (durationSeconds > 0) ? durationSeconds + 3 : 15;
+    // Use duration + 5s buffer, or default 60s if duration is unknown/zero
+    final timeout = (durationSeconds > 0) ? durationSeconds + 5 : 60;
     _playbackWatchdog = Timer(Duration(seconds: timeout), () {
       if (_isNativeGreetingPlaying || _isNativeGoodbyePlaying) {
         debugPrint(
@@ -294,6 +295,7 @@ class AudioProvider extends ChangeNotifier {
     _isNativeGreetingPlaying = false;
     _isNativeGoodbyePlaying = false;
     notifyListeners();
+    onNativePlaybackComplete?.call(); // 🟢 Trigger callback
   }
 
   // ===== Action Methods =====

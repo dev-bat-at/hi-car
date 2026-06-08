@@ -92,9 +92,12 @@ class SettingsScreen extends StatelessWidget {
                               settings.connectionMode == 'phone_bluetooth'
                                   ? 'Điện thoại + Bluetooth'
                                   : (settings.connectionMode ==
-                                          'phone_android_auto'
-                                      ? 'Điện thoại + Android Auto'
-                                      : 'Màn Android / Android Box'),
+                                          'android_screen_mode'
+                                      ? 'Màn hình Android độ'
+                                      : (settings.connectionMode ==
+                                              'android_box_mode'
+                                          ? 'Android Box'
+                                          : 'Điện thoại + Android Auto')),
                               style: TextStyle(
                                 color: AppColors.textPrimary,
                                 fontSize: 15.sp,

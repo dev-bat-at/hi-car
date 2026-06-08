@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
 import '../native/bluetooth_channel.dart';
+import '../native/service_channel.dart';
 
 class SettingsProvider extends ChangeNotifier {
   bool _autoPlayEnabled = true;
@@ -10,11 +11,13 @@ class SettingsProvider extends ChangeNotifier {
   bool _androidAutoEnabled = true;
   bool _showNotification = true;
   String _connectionMode =
-      'phone_bluetooth'; // 'phone_bluetooth', 'phone_android_auto', 'android_screen_box'
+      'android_screen_mode'; // 'android_screen_mode', 'android_box_mode', 'phone_bluetooth'
+  bool _playOnOpen = true;
   String? _pendingConnectionMode;
   bool _isBetaMode = false;
 
   bool get autoPlayEnabled => _autoPlayEnabled;
+  bool get playOnOpen => _playOnOpen;
   int get delaySeconds => _delaySeconds;
   bool get bluetoothAutoPlay => _bluetoothAutoPlay;
   bool get androidAutoEnabled => _androidAutoEnabled;
@@ -31,7 +34,9 @@ class SettingsProvider extends ChangeNotifier {
     _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
     _androidAutoEnabled = prefs.getBool('android_auto_enabled') ?? true;
     _showNotification = prefs.getBool('show_notification') ?? true;
-    _connectionMode = prefs.getString('connection_mode') ?? 'phone_bluetooth';
+    _connectionMode =
+        prefs.getString('connection_mode') ?? 'android_screen_mode';
+    _playOnOpen = prefs.getBool('play_on_open') ?? true;
     _isBetaMode = prefs.getBool('is_beta_mode') ?? false;
 
     // Sync connection mode with native on startup
@@ -78,6 +83,13 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setPlayOnOpen(bool value) async {
+    _playOnOpen = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('play_on_open', value);
+    notifyListeners();
+  }
+
   Future<void> setConnectionMode(String mode) async {
     _pendingConnectionMode = mode;
     notifyListeners();
@@ -85,11 +97,35 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> commitSettings() async {
     if (_pendingConnectionMode != null) {
+      final oldMode = _connectionMode;
       _connectionMode = _pendingConnectionMode!;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('connection_mode', _connectionMode);
       _pendingConnectionMode = null;
+
+      // 🧹 DỌN DẸP KHI ĐỔI MODE
+      if (oldMode == 'phone_bluetooth' &&
+          _connectionMode != 'phone_bluetooth') {
+        try {
+          // Tắt quét Bluetooth và xóa thiết bị mục tiêu nếu rời khỏi mode này
+          await BluetoothChannel.instance.stopDiscovery();
+          await BluetoothChannel.instance.clearTargetDevice();
+        } catch (e) {
+          debugPrint('Clean up phone_bluetooth error: $e');
+        }
+      }
+
+      // Đồng bộ Mode mới sang Native
+      try {
+        await BluetoothChannel.instance.setConnectionMode(_connectionMode);
+      } catch (e) {
+        debugPrint('Sync new mode error: $e');
+      }
     }
+
+    // 🟢 Đồng bộ sang vùng nhớ an toàn cho khởi động (Direct Boot)
+    await ServiceChannel.instance.syncPrefs();
+
     notifyListeners();
   }
 

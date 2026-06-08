@@ -1,3 +1,4 @@
+import 'dart:io' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -21,83 +22,93 @@ class PermissionStatusWidget extends StatelessWidget {
         final overlayGranted = overlayProvider.hasPermission;
         final batteryGranted = permissionProvider.status.batteryOptimization;
 
-        final isXiaomi = permissionProvider.isXiaomi;
-
         final permissionList = <Widget>[];
 
-        // 1. Bluetooth (for connectivity)
-        if (mode == 'phone_bluetooth') {
-          permissionList.add(
-            _PermissionRow(
-              label: 'Quyền Bluetooth Connect',
-              description: 'Để tự động nhận diện xe và phát tiếng chào.',
-              isGranted: btGranted,
-              onTap: () => permissionProvider.requestBluetoothPermissions(),
-            ),
-          );
-          permissionList.add(Divider(color: AppColors.divider, height: 16.h));
-        }
-
-        // 2. Notification (CRITICAL for Service)
+        // --- 1. QUYỀN CHUNG (Bắt buộc cho mọi Mode di động/nền) ---
+        // Notification
         permissionList.add(
           _PermissionRow(
             label: 'Quyền Thông báo',
-            description: 'Bắt buộc để duy trì hệ thống chạy ngầm ổn định.',
+            description: 'Để duy trì dịch vụ trợ lý chạy ổn định trong nền.',
             isGranted: notifGranted,
             onTap: () => permissionProvider.requestNotificationPermission(),
           ),
         );
         permissionList.add(Divider(color: AppColors.divider, height: 16.h));
 
-        // 3. Battery Optimization (CRITICAL for background Isolate)
-        permissionList.add(
-          _PermissionRow(
-            label: 'Bỏ tối ưu hóa Pin',
-            description: 'Để hệ thống không bị đóng khi bạn thoát ứng dụng.',
-            isGranted: batteryGranted,
-            onTap: () =>
-                permissionProvider.requestBatteryOptimizationPermission(),
-          ),
-        );
-        permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+        // Battery Optimization (Chỉ Android)
+        if (io.Platform.isAndroid) {
+          permissionList.add(
+            _PermissionRow(
+              label: 'Bỏ tối ưu hóa Pin',
+              description: 'Đảm bảo hệ thống không bị đóng khi điện thoại ngủ.',
+              isGranted: batteryGranted,
+              onTap: () =>
+                  permissionProvider.requestBatteryOptimizationPermission(),
+            ),
+          );
+          permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+        }
 
-        // 4. Overlay
-        permissionList.add(
-          _PermissionRow(
-            label: 'Quyền cửa sổ nổi (Overlay)',
-            description: 'Để hiển thị bong bóng trợ lý trên các app khác.',
-            isGranted: overlayGranted,
-            onTap: () => overlayProvider.requestPermission(),
-          ),
-        );
+        // --- 2. QUYỀN RIÊNG THEO CHẾ ĐỘ ---
 
-        // 5. Android Box Specific: Launch on Boot / Autostart
-        if (mode == 'android_screen_box') {
+        // Chế độ Android Màn Độ
+        if (mode == 'android_screen_mode' && io.Platform.isAndroid) {
+          permissionList.add(
+            _PermissionRow(
+              label: 'Cửa sổ Pop-up khi chạy nền',
+              description: 'Cho phép App tự ẩn mình sau khi phát nhạc xong.',
+              isGranted: false,
+              onTap: () => permissionProvider.openSettings(),
+              actionLabel: 'Cấu hình ngay',
+            ),
+          );
           permissionList.add(Divider(color: AppColors.divider, height: 16.h));
           permissionList.add(
             _PermissionRow(
-              label: 'Quyền Tự khởi động (Autostart)',
-              description: 'Để hệ thống tự chào ngay khi màn hình vừa bật.',
-              isGranted: false, // Hard to detect, show as guidance
+              label: 'Tự khởi động (Autostart)',
+              description: 'Mở app ngay khi xe nổ máy.',
+              isGranted: true,
               onTap: () => permissionProvider.openSettings(),
-              actionLabel: 'Cấp quyền',
+              actionLabel: 'KIỂM TRA',
             ),
           );
         }
 
-        // 6. Xiaomi Specific
-        if (isXiaomi) {
-          permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+        // Chế độ Android Box
+        if (mode == 'android_box_mode' && io.Platform.isAndroid) {
           permissionList.add(
             _PermissionRow(
-              label: 'Cửa sổ Pop-up khi chạy nền (MIUI)',
-              description:
-                  'Xiaomi cần quyền này để bong bóng có thể mở được App.',
-              isGranted: false, // We can't detect this easily, show as action
+              label: 'Tự khởi động (Autostart)',
+              description: 'Mở app ngay khi xe nổ máy.',
+              isGranted: true,
               onTap: () => permissionProvider.openSettings(),
-              actionLabel: 'Đi tới cài đặt',
+              actionLabel: 'CẤU HÌNH',
             ),
           );
+        }
+
+        // Chế độ Bluetooth Điện thoại
+        if (mode == 'phone_bluetooth') {
+          permissionList.add(
+            _PermissionRow(
+              label: 'Kết nối thiết bị Bluetooth',
+              description: 'Nhận diện xe qua Bluetooth điện thoại.',
+              isGranted: btGranted,
+              onTap: () => permissionProvider.requestBluetoothPermissions(),
+            ),
+          );
+          if (io.Platform.isAndroid) {
+            permissionList.add(Divider(color: AppColors.divider, height: 16.h));
+            permissionList.add(
+              _PermissionRow(
+                label: 'Quyền cửa sổ nổi (Overlay)',
+                description: 'Hiện nút điều khiển trên các ứng dụng khác.',
+                isGranted: overlayGranted,
+                onTap: () => overlayProvider.requestPermission(),
+              ),
+            );
+          }
         }
 
         return Container(

@@ -393,14 +393,17 @@ class _GlowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        height: 56.h,
+        height: isLandscape ? 44.h : 56.h, // 🟢 Giảm khi xoay ngang
         decoration: BoxDecoration(
           color: AppColors.primary,
-          borderRadius: BorderRadius.circular(14.r),
+          borderRadius: BorderRadius.circular(12.r),
           boxShadow: null,
         ),
         child: Center(
@@ -408,7 +411,7 @@ class _GlowButton extends StatelessWidget {
             label,
             style: TextStyle(
               color: Colors.white,
-              fontSize: 15.sp,
+              fontSize: isLandscape ? 13.sp : 15.sp, // 🟢 Giảm font size nhẹ
               fontWeight: FontWeight.bold,
               letterSpacing: 2.0,
             ),

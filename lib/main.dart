@@ -59,19 +59,33 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AudioProvider _audioProvider;
   late final OverlayProvider _overlayProvider;
+  late final SettingsProvider _settingsProvider;
 
   @override
   void initState() {
     super.initState();
     _audioProvider = AudioProvider()..init();
     _overlayProvider = OverlayProvider()..init();
+    _settingsProvider = SettingsProvider()..init();
 
     // Listen to audio provider to sync state to overlay
     _audioProvider.addListener(_updateOverlayState);
 
+    // 🟢 Chế độ Android Màn Độ: Khi phát xong thì thu nhỏ app
+    _audioProvider.onNativePlaybackComplete = () {
+      if (_settingsProvider.connectionMode == 'android_screen_mode') {
+        debugPrint(
+            'Main: Audio finished in android_screen_mode, minimizing app...');
+        ServiceChannel.instance.minimizeApp();
+      }
+    };
+
     _initOverlayListener();
     _initIsolateListener();
     WidgetsBinding.instance.addObserver(this);
+
+    // 🟢 Chế độ Mở App là Chào: Phát nhạc ngay khi khởi động
+    _initPlayOnOpen();
 
     // Ensure overlay is hidden on startup
     _overlayProvider.hideOverlay();
@@ -212,6 +226,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  // 🟢 Logic phát nhạc khi vừa mở app
+  bool _hasTriggeredOpenGreeting = false;
+
+  Future<void> _initPlayOnOpen() async {
+    if (_hasTriggeredOpenGreeting) return;
+
+    // Đợi Settings load xong
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    if (_settingsProvider.playOnOpen) {
+      // Đợi thêm cho AudioProvider load xong danh sách nhạc từ local/server
+      int retryCount = 0;
+      while (_audioProvider.audioList.isEmpty && retryCount < 10) {
+        debugPrint('Main: Audio list empty, waiting... ($retryCount)');
+        await Future.delayed(const Duration(milliseconds: 1000));
+        retryCount++;
+      }
+
+      if (_audioProvider.audioList.isNotEmpty) {
+        debugPrint('Main: Triggering play greeting on open...');
+        _hasTriggeredOpenGreeting = true;
+        await _audioProvider.playGreetingViaNative();
+      } else {
+        debugPrint(
+            'Main: Could not trigger greeting - list still empty after 10s');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -220,21 +263,34 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => _audioProvider),
         ChangeNotifierProvider(create: (_) => BluetoothProvider()..init()),
         ChangeNotifierProvider(create: (_) => _overlayProvider),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
+        ChangeNotifierProvider(create: (_) => _settingsProvider),
         ChangeNotifierProvider(
             create: (_) => PermissionProvider()..checkAllPermissions()),
       ],
-      child: ScreenUtilInit(
-        designSize: const Size(390, 844),
-        minTextAdapt: true,
-        splitScreenMode: true,
-        builder: (context, child) {
-          return MaterialApp.router(
-            title: 'Giọng Thương Gia',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.dark,
-            routerConfig: AppRouter.router,
-            builder: EasyLoading.init(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+
+          // 🟢 Trên Tablet (>600px), dùng kích thước thực tế làm chuẩn để KHÔNG bị phóng to.
+          // Trên Phone mang tính di động cao, dùng chuẩn 390x844 để tối ưu.
+          final Size dynamicDesignSize =
+              width > 600 ? Size(width, height) : const Size(390, 844);
+
+          return ScreenUtilInit(
+            designSize: dynamicDesignSize,
+            minTextAdapt: true,
+            splitScreenMode: true,
+            useInheritedMediaQuery: true,
+            builder: (context, child) {
+              return MaterialApp.router(
+                title: 'Giọng Thương Gia',
+                debugShowCheckedModeBanner: false,
+                theme: AppTheme.dark,
+                routerConfig: AppRouter.router,
+                builder: EasyLoading.init(),
+              );
+            },
           );
         },
       ),

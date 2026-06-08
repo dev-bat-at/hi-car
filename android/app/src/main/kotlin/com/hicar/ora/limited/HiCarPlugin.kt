@@ -2,6 +2,7 @@ package com.hicar.ora.limited
 
 import android.content.Context
 import android.content.Intent
+import android.content.ComponentName
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -103,11 +104,84 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 startAudioService(AudioForegroundService.ACTION_STOP_AUDIO)
                 result.success(true)
             }
+            "minimizeApp" -> {
+                minimizeApp()
+                result.success(true)
+            }
+            "showAutostartSettings" -> {
+                showAutostartSettings()
+                result.success(true)
+            }
+            "syncPrefs" -> {
+                syncPrefsToDeviceProtected()
+                result.success(true)
+            }
             "openApp" -> {
                 openApp(result)
             }
             else -> result.notImplemented()
         }
+    }
+
+    /**
+     * Đồng bộ SharedPreferences sang vùng nhớ an toàn để có thể đọc được ngay khi khởi động (Direct Boot)
+     */
+    private fun syncPrefsToDeviceProtected() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val deviceContext = context.createDeviceProtectedStorageContext()
+            val sourcePrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val destPrefs = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            
+            val allEntries = sourcePrefs.all
+            val editor = destPrefs.edit()
+            for ((key, value) in allEntries) {
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                }
+            }
+            editor.apply()
+        }
+    }
+
+    private fun showAutostartSettings() {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val intent = Intent()
+        try {
+            when {
+                manufacturer.contains("xiaomi") -> {
+                    intent.component = ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+                }
+                manufacturer.contains("oppo") -> {
+                    intent.component = ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")
+                }
+                manufacturer.contains("vivo") -> {
+                    intent.component = ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+                }
+                else -> {
+                    intent.action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                    intent.data = android.net.Uri.fromParts("package", context.packageName, null)
+                }
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            // Fallback to general settings
+            val fallbackIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            fallbackIntent.data = android.net.Uri.fromParts("package", context.packageName, null)
+            fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(fallbackIntent)
+        }
+    }
+
+    private fun minimizeApp() {
+        val intent = Intent(Intent.ACTION_MAIN)
+        intent.addCategory(Intent.CATEGORY_HOME)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        context.startActivity(intent)
     }
 
     private fun handleBluetoothCall(call: MethodCall, result: Result) {
@@ -162,19 +236,34 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
     }
 
     private fun openApp(result: Result) {
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        if (launchIntent != null) {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or 
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            try {
+        try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            if (launchIntent != null) {
+                // 🟢 ĐÂY LÀ CẤU HÌNH QUAN TRỌNG NHẤT ĐỂ MỞ APP ỔN ĐỊNH
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP or 
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                
+                // Đảm bảo intent nhắm đúng vào main activity của app
+                launchIntent.action = Intent.ACTION_MAIN
+                launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+
                 context.startActivity(launchIntent)
                 result.success(true)
-            } catch (e: Exception) {
+            } else {
                 result.success(false)
             }
-        } else {
-            result.success(false)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Catch-all dự phòng: Cố gắng mở lại bằng package name nếu intent trên thất bại
+            try {
+                val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                result.success(true)
+            } catch (e2: Exception) {
+                result.success(false)
+            }
         }
     }
 

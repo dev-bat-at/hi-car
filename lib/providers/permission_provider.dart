@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import '../native/service_channel.dart';
 
 class PermissionStatus {
   final bool bluetooth;
@@ -28,9 +29,7 @@ class PermissionStatus {
   bool isGrantedForMode(String mode) {
     if (mode == 'phone_bluetooth') {
       return bluetoothConnect && notification;
-    } else if (mode == 'phone_android_auto') {
-      return notification;
-    } else if (mode == 'android_screen_box') {
+    } else if (mode == 'android_box_mode' || mode == 'android_screen_mode') {
       return notification && batteryOptimization;
     }
     return false;
@@ -41,9 +40,7 @@ class PermissionStatus {
     if (mode == 'phone_bluetooth') {
       if (bluetoothConnect) count++;
       if (notification) count++;
-    } else if (mode == 'phone_android_auto') {
-      if (notification) count++;
-    } else if (mode == 'android_screen_box') {
+    } else if (mode == 'android_box_mode' || mode == 'android_screen_mode') {
       if (notification) count++;
       if (batteryOptimization) count++;
     }
@@ -52,8 +49,7 @@ class PermissionStatus {
 
   int getTotalCountForMode(String mode) {
     if (mode == 'phone_bluetooth') return 2;
-    if (mode == 'phone_android_auto') return 1;
-    if (mode == 'android_screen_box') return 2;
+    if (mode == 'android_box_mode' || mode == 'android_screen_mode') return 2;
     return 0;
   }
 }
@@ -174,6 +170,11 @@ class PermissionProvider extends ChangeNotifier {
   }
 
   Future<void> openSettings() async {
-    await openAppSettings();
+    if (Platform.isAndroid) {
+      final ServiceChannel sc = ServiceChannel.instance;
+      await sc.showAutostartSettings();
+    } else {
+      await openAppSettings();
+    }
   }
 }

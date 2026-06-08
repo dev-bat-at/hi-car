@@ -69,6 +69,22 @@ class ServiceChannel {
     }
   }
 
+  Future<void> showAutostartSettings() async {
+    try {
+      await _channel.invokeMethod('showAutostartSettings');
+    } catch (e) {
+      debugPrint('ServiceChannel: showAutostartSettings error: $e');
+    }
+  }
+
+  Future<void> minimizeApp() async {
+    try {
+      await _channel.invokeMethod('minimizeApp');
+    } catch (e) {
+      debugPrint('ServiceChannel: minimizeApp error: $e');
+    }
+  }
+
   Future<void> openApp() async {
     try {
       await _channel.invokeMethod('openApp');
@@ -76,6 +92,14 @@ class ServiceChannel {
       debugPrint('ServiceChannel: openApp error: $e');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: openApp missing plugin: $e');
+    }
+  }
+
+  Future<void> syncPrefs() async {
+    try {
+      await _channel.invokeMethod('syncPrefs');
+    } catch (e) {
+      debugPrint('ServiceChannel: syncPrefs error: $e');
     }
   }
 }
