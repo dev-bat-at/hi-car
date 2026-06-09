@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/audio_model.dart';
 import '../services/api_service.dart';
+import '../../core/logger.dart';
 
 /// SyncService - Performs optimized background synchronization of audio files.
 class SyncService {
@@ -20,6 +21,8 @@ class SyncService {
     if (!await audioDir.exists()) {
       await audioDir.create(recursive: true);
     }
+    // ignore: avoid_print
+    print('📂 THƯ MỤC AUDIO LƯU TẠI: ${audioDir.path}');
     return audioDir;
   }
 
@@ -93,6 +96,10 @@ class SyncService {
       return syncedList;
     } catch (e) {
       onProgress?.call('Lỗi đồng bộ: $e', 1.0);
+      AppLogger.instance.log(
+        'Lỗi đồng bộ: $e',
+        type: 'sync_error',
+      );
       rethrow;
     }
   }
@@ -103,6 +110,8 @@ class SyncService {
     required Directory audioDir,
   }) async {
     final destPath = '${audioDir.path}/$audioId.mp3';
+    // ignore: avoid_print
+    print('📥 ĐANG TẢI FILE: $url -> $destPath');
 
     try {
       if (url.startsWith('mock://')) {
@@ -124,6 +133,11 @@ class SyncService {
       return destPath;
     } catch (e) {
       print('Download error: $e');
+      AppLogger.instance.log(
+        'Lỗi tải file: $url',
+        type: 'download_error',
+        details: {'url': url, 'error': e.toString()},
+      );
       return null;
     }
   }

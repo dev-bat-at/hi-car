@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/logger.dart';
 
 /// Performance-optimized API Client with memory caching and Bearer Auth.
 class ApiClient {
@@ -62,6 +63,18 @@ class ApiClient {
             print('❗ Error Data: ${e.response?.data}');
           print('💡 Message: ${e.message}');
         }
+
+        // Capture in local logs
+        AppLogger.instance.log(
+          'Lỗi mạng: [${e.response?.statusCode}] ${e.requestOptions.path}',
+          type: 'network_error',
+          details: {
+            'statusCode': e.response?.statusCode,
+            'path': e.requestOptions.path,
+            'data': e.response?.data,
+            'message': e.message,
+          },
+        );
 
         // 🔴 Rule: 1 Account = 1 Device. Revoke on 401 Unauthorized.
         if (e.response?.statusCode == 401) {

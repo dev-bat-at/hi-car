@@ -116,7 +116,7 @@ class _AudioCard extends StatelessWidget {
             : AppColors.warning;
 
     return Container(
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(14.r),
@@ -136,11 +136,11 @@ class _AudioCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12.r),
               splashColor: Colors.white.withOpacity(0.3),
               child: Container(
-                width: 44.w,
-                height: 44.w,
+                width: 34.w,
+                height: 34.w,
                 decoration: BoxDecoration(
                   color: typeColor,
-                  borderRadius: BorderRadius.circular(12.r),
+                  borderRadius: BorderRadius.circular(10.r),
                 ),
                 child: Icon(
                   audio.type == AudioType.greeting
@@ -149,7 +149,7 @@ class _AudioCard extends StatelessWidget {
                           ? Icons.directions_car_rounded
                           : Icons.audiotrack_rounded,
                   color: Colors.white,
-                  size: 20.sp,
+                  size: 16.sp,
                 ),
               ),
             ),
@@ -166,7 +166,7 @@ class _AudioCard extends StatelessWidget {
                   audio.title,
                   style: TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 13.sp,
+                    fontSize: 12.sp,
                     fontWeight: FontWeight.w600,
                   ),
                   maxLines: 1,

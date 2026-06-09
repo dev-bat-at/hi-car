@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../core/constants.dart';
+import '../core/logger.dart';
 
 /// Flutter → Kotlin bridge for AudioForegroundService control
 class ServiceChannel {
@@ -15,6 +16,13 @@ class ServiceChannel {
       debugPrint('ServiceChannel: Received method call: ${call.method}');
       if (call.method == 'onPlaybackComplete') {
         onPlaybackComplete?.call();
+      } else if (call.method == 'onNativeError') {
+        final message =
+            call.arguments?.toString() ?? 'Lỗi không xác định từ Native';
+        AppLogger.instance.log(
+          'LỖI NATIVE: $message',
+          type: 'native_error',
+        );
       }
     });
   }
@@ -24,8 +32,12 @@ class ServiceChannel {
       await _channel.invokeMethod('startService');
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: startService error: $e');
+      AppLogger.instance
+          .log('Lỗi Native startService: ${e.message}', type: 'native_error');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: startService missing plugin: $e');
+      AppLogger.instance
+          .log('Lỗi Native: Chưa cài đặt plugin Service', type: 'native_error');
     }
   }
 
@@ -34,6 +46,8 @@ class ServiceChannel {
       await _channel.invokeMethod('stopService');
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: stopService error: $e');
+      AppLogger.instance
+          .log('Lỗi Native stopService: ${e.message}', type: 'native_error');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: stopService missing plugin: $e');
     }
@@ -44,6 +58,8 @@ class ServiceChannel {
       await _channel.invokeMethod('playGreeting', {'audioPath': audioPath});
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: playGreeting error: $e');
+      AppLogger.instance
+          .log('Lỗi Native playGreeting: ${e.message}', type: 'native_error');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: playGreeting missing plugin: $e');
     }
@@ -54,6 +70,8 @@ class ServiceChannel {
       await _channel.invokeMethod('playGoodbye', {'audioPath': audioPath});
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: playGoodbye error: $e');
+      AppLogger.instance
+          .log('Lỗi Native playGoodbye: ${e.message}', type: 'native_error');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: playGoodbye missing plugin: $e');
     }
@@ -64,6 +82,8 @@ class ServiceChannel {
       await _channel.invokeMethod('stopAudio');
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: stopAudio error: $e');
+      AppLogger.instance
+          .log('Lỗi Native stopAudio: ${e.message}', type: 'native_error');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: stopAudio missing plugin: $e');
     }
@@ -100,6 +120,7 @@ class ServiceChannel {
       await _channel.invokeMethod('syncPrefs');
     } catch (e) {
       debugPrint('ServiceChannel: syncPrefs error: $e');
+      AppLogger.instance.log('Lỗi Native syncPrefs: $e', type: 'native_error');
     }
   }
 }

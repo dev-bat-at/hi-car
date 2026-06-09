@@ -76,6 +76,11 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
         backgroundColor: AppColors.cardElevated,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        insetPadding: EdgeInsets.symmetric(
+            horizontal: MediaQuery.of(context).orientation ==
+                    Orientation.landscape
+                ? 160.w
+                : 40.w),
         title: Text(
           'Hết lượt tạo',
           style: TextStyle(
@@ -125,368 +130,459 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Info Box
-                Container(
-                  padding: EdgeInsets.all(16.w),
-                  decoration: BoxDecoration(
-                    color: AppColors.brandBackground,
-                    borderRadius: BorderRadius.circular(14.r),
-                    border: Border.all(color: AppColors.primary),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.bolt_rounded,
-                          color: AppColors.primary, size: 24.sp),
-                      SizedBox(width: 12.w),
-                      Expanded(
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final isLandscape = orientation == Orientation.landscape;
+
+            if (isLandscape) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Cột trái: Form nhập liệu
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(16.w),
+                      child: Form(
+                        key: _formKey,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            _buildInfoBox(credits),
+                            SizedBox(height: 16.h),
+                            _buildField(
+                              label: 'Tên chủ xe',
+                              controller: _nameController,
+                              hint: 'Nguyễn Văn A',
+                              icon: Icons.person_outline_rounded,
+                            ),
+                            SizedBox(height: 12.h),
+                            _buildField(
+                              label: 'Biển số xe',
+                              controller: _licensePlateController,
+                              hint: '51A-12345',
+                              icon: Icons.directions_car_rounded,
+                            ),
+                            SizedBox(height: 12.h),
+                            _buildField(
+                              label: 'Hãng xe',
+                              controller: _carBrandController,
+                              hint: 'VinFast VF8',
+                              icon: Icons.airport_shuttle_rounded,
+                            ),
+                            SizedBox(height: 16.h),
+                            _buildGenerateButton(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Đường chia ngăn
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: AppColors.border.withOpacity(0.3),
+                  ),
+
+                  // Cột phải: Chọn loại & Kết quả
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(16.w),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Loại lời thoại',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          SizedBox(height: 10.h),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _TypeSelectCard(
+                                  label: 'Lời Chào',
+                                  icon: Icons.waving_hand_rounded,
+                                  selected: _selectedType == 'greeting',
+                                  color: AppColors.primary,
+                                  onTap: () => setState(
+                                      () => _selectedType = 'greeting'),
+                                ),
+                              ),
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: _TypeSelectCard(
+                                  label: 'Lời Tạm Biệt',
+                                  icon: Icons.directions_car_rounded,
+                                  selected: _selectedType == 'goodbye',
+                                  color: AppColors.success,
+                                  onTap: () =>
+                                      setState(() => _selectedType = 'goodbye'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_generatedAudio != null) ...[
+                            SizedBox(height: 24.h),
                             Text(
-                              'Số lượt tạo còn lại: $credits lượt',
+                              'Kết Quả Tạo Thử',
                               style: TextStyle(
-                                color: AppColors.primary,
+                                color: AppColors.textPrimary,
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            SizedBox(height: 2.h),
-                            Text(
-                              'Nhập thông tin xe của bạn để AI tự động soạn thảo và phát lời chào tương ứng.',
-                              style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 11.sp,
+                            SizedBox(height: 12.h),
+                            _buildResultCard(),
+                          ] else if (_isGenerating) ...[
+                            SizedBox(height: 48.h),
+                            const Center(
+                              child: CircularProgressIndicator(
+                                valueColor:
+                                    AlwaysStoppedAnimation(AppColors.primary),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: 24.h),
-
-                // Form fields
-                _buildField(
-                  label: 'Tên chủ xe',
-                  controller: _nameController,
-                  hint: 'Nguyễn Văn A',
-                  icon: Icons.person_outline_rounded,
-                ),
-                SizedBox(height: 16.h),
-                _buildField(
-                  label: 'Biển số xe',
-                  controller: _licensePlateController,
-                  hint: '51A-12345',
-                  icon: Icons.directions_car_rounded,
-                ),
-                SizedBox(height: 16.h),
-                _buildField(
-                  label: 'Hãng xe',
-                  controller: _carBrandController,
-                  hint: 'VinFast VF8',
-                  icon: Icons.airport_shuttle_rounded,
-                ),
-
-                SizedBox(height: 20.h),
-
-                // Type Select
-                Text(
-                  'Loại lời thoại',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                SizedBox(height: 10.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _TypeSelectCard(
-                        label: 'Lời Chào',
-                        icon: Icons.waving_hand_rounded,
-                        selected: _selectedType == 'greeting',
-                        color: AppColors.primary,
-                        onTap: () => setState(() => _selectedType = 'greeting'),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: _TypeSelectCard(
-                        label: 'Lời Tạm Biệt',
-                        icon: Icons.directions_car_rounded,
-                        selected: _selectedType == 'goodbye',
-                        color: AppColors.success,
-                        onTap: () => setState(() => _selectedType = 'goodbye'),
-                      ),
-                    ),
-                  ],
-                ),
-
-                SizedBox(height: 32.h),
-
-                // Generate Button
-                _isGenerating
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation(AppColors.primary),
-                        ),
-                      )
-                    : ElevatedButton(
-                        onPressed: _generate,
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: Size(double.infinity, 54.h),
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: AppColors.background,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12.r),
-                          ),
-                        ),
-                        child: Text(
-                          'GENERATE AI AUDIO',
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ),
-
-                SizedBox(height: 32.h),
-
-                // Result Preview if generated
-                if (_generatedAudio != null) ...[
-                  Text(
-                    'Kết Quả Tạo Thử',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 12.h),
-                  Consumer<AudioProvider>(
-                    builder: (context, audioProvider, child) {
-                      final isPlayingCurrent = audioProvider.isPlaying &&
-                          audioProvider.currentlyPlaying?.id ==
-                              _generatedAudio!.id;
-
-                      return Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 16.w, vertical: 12.h),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(14.r),
-                          border: Border.all(
-                            color: AppColors.primary,
-                            width: isPlayingCurrent ? 1.5 : 1,
-                          ),
-                          boxShadow: null,
-                        ),
-                        child: Row(
-                          children: [
-                            _ScaleButton(
-                              onTap: () {
-                                if (isPlayingCurrent) {
-                                  audioProvider.stopAudio();
-                                } else {
-                                  audioProvider.playAudio(_generatedAudio!);
-                                }
-                              },
-                              child: Container(
-                                width: 36.w,
-                                height: 36.w,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isPlayingCurrent
-                                      ? AppColors.primary
-                                      : AppColors.cardElevated,
-                                ),
-                                child: Icon(
-                                  isPlayingCurrent
-                                      ? Icons.stop_rounded
-                                      : Icons.play_arrow_rounded,
-                                  color: Colors.white,
-                                  size: 20.sp,
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 12.w),
-                            Expanded(
+                          ] else ...[
+                            SizedBox(height: 48.h),
+                            Center(
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Icon(Icons.auto_awesome_rounded,
+                                      size: 40.sp,
+                                      color:
+                                          AppColors.textHint.withOpacity(0.3)),
+                                  SizedBox(height: 12.h),
                                   Text(
-                                    _generatedAudio!.title,
+                                    'AI đang đợi lệnh của bạn...',
                                     style: TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 13.sp,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2.h),
-                                  Text(
-                                    _generatedAudio!.hasLocalFile
-                                        ? (_generatedAudio!.description ??
-                                            'Đã lưu offline ✓')
-                                        : 'Âm thanh trực tuyến (Nghe thử)',
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 11.sp,
-                                    ),
+                                        color: AppColors.textHint,
+                                        fontSize: 11.sp),
                                   ),
                                 ],
                               ),
                             ),
-                            PopupMenuButton<String>(
-                              icon: Icon(
-                                Icons.more_vert_rounded,
-                                color: AppColors.textSecondary,
-                                size: 22.sp,
-                              ),
-                              color: AppColors.cardElevated,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12.r),
-                                side: const BorderSide(color: AppColors.border),
-                              ),
-                              onSelected: (value) async {
-                                if (value == 'play') {
-                                  if (isPlayingCurrent) {
-                                    await audioProvider.stopAudio();
-                                  } else {
-                                    await audioProvider
-                                        .playAudio(_generatedAudio!);
-                                  }
-                                } else if (value == 'set_greeting') {
-                                  AudioModel target = _generatedAudio!;
-                                  if (!target.hasLocalFile) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Đang tải và lưu âm thanh...')),
-                                    );
-                                    target = await audioProvider
-                                        .addAndDownloadGeneratedAudio(target);
-                                    setState(() {
-                                      _generatedAudio = target;
-                                    });
-                                  }
-                                  await audioProvider.setAsGreeting(target.id);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                          'Đã đặt làm Lời Chào hệ thống ✓'),
-                                      backgroundColor: AppColors.success,
-                                    ),
-                                  );
-                                } else if (value == 'set_goodbye') {
-                                  AudioModel target = _generatedAudio!;
-                                  if (!target.hasLocalFile) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Đang tải và lưu âm thanh...')),
-                                    );
-                                    target = await audioProvider
-                                        .addAndDownloadGeneratedAudio(target);
-                                    setState(() {
-                                      _generatedAudio = target;
-                                    });
-                                  }
-                                  await audioProvider.setAsGoodbye(target.id);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                          'Đã đặt làm Lời Tạm Biệt hệ thống ✓'),
-                                      backgroundColor: AppColors.success,
-                                    ),
-                                  );
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                PopupMenuItem(
-                                  value: 'play',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        isPlayingCurrent
-                                            ? Icons.pause_rounded
-                                            : Icons.play_arrow_rounded,
-                                        color: AppColors.primary,
-                                        size: 18.sp,
-                                      ),
-                                      SizedBox(width: 8.w),
-                                      Text(
-                                        isPlayingCurrent
-                                            ? 'Dừng phát'
-                                            : 'Nghe thử',
-                                        style: TextStyle(
-                                            color: AppColors.textPrimary,
-                                            fontSize: 13.sp),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'set_greeting',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.waving_hand_rounded,
-                                        color: AppColors.primary,
-                                        size: 18.sp,
-                                      ),
-                                      SizedBox(width: 8.w),
-                                      Text(
-                                        'Gửi hệ thống: Đặt Lời Chào',
-                                        style: TextStyle(
-                                            color: AppColors.textPrimary,
-                                            fontSize: 13.sp),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'set_goodbye',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.directions_car_rounded,
-                                        color: AppColors.success,
-                                        size: 18.sp,
-                                      ),
-                                      SizedBox(width: 8.w),
-                                      Text(
-                                        'Gửi hệ thống: Đặt Lời Tạm Biệt',
-                                        style: TextStyle(
-                                            color: AppColors.textPrimary,
-                                            fontSize: 13.sp),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
                           ],
-                        ),
-                      );
-                    },
+                        ],
+                      ),
+                    ),
                   ),
                 ],
+              );
+            }
+
+            // Dạng dọc mặc định
+            return SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInfoBox(credits),
+                    SizedBox(height: 24.h),
+                    _buildField(
+                      label: 'Tên chủ xe',
+                      controller: _nameController,
+                      hint: 'Nguyễn Văn A',
+                      icon: Icons.person_outline_rounded,
+                    ),
+                    SizedBox(height: 16.h),
+                    _buildField(
+                      label: 'Biển số xe',
+                      controller: _licensePlateController,
+                      hint: '51A-12345',
+                      icon: Icons.directions_car_rounded,
+                    ),
+                    SizedBox(height: 16.h),
+                    _buildField(
+                      label: 'Hãng xe',
+                      controller: _carBrandController,
+                      hint: 'VinFast VF8',
+                      icon: Icons.airport_shuttle_rounded,
+                    ),
+                    SizedBox(height: 20.h),
+                    Text(
+                      'Loại lời thoại',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TypeSelectCard(
+                            label: 'Lời Chào',
+                            icon: Icons.waving_hand_rounded,
+                            selected: _selectedType == 'greeting',
+                            color: AppColors.primary,
+                            onTap: () =>
+                                setState(() => _selectedType = 'greeting'),
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: _TypeSelectCard(
+                            label: 'Lời Tạm Biệt',
+                            icon: Icons.directions_car_rounded,
+                            selected: _selectedType == 'goodbye',
+                            color: AppColors.success,
+                            onTap: () =>
+                                setState(() => _selectedType = 'goodbye'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 32.h),
+                    _buildGenerateButton(),
+                    SizedBox(height: 32.h),
+                    if (_generatedAudio != null) ...[
+                      Text(
+                        'Kết Quả Tạo Thử',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 12.h),
+                      _buildResultCard(),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoBox(int credits) {
+    return Container(
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: AppColors.brandBackground,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: AppColors.primary),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.bolt_rounded, color: AppColors.primary, size: 22.sp),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Số lượt tạo còn lại: $credits lượt',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenerateButton() {
+    if (_isGenerating) return const SizedBox.shrink();
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    return ElevatedButton(
+      onPressed: _generate,
+      style: ElevatedButton.styleFrom(
+        minimumSize: Size(double.infinity, isLandscape ? 38.h : 50.h),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8.r),
+        ),
+        elevation: 0,
+      ),
+      child: Text(
+        'BẮT ĐẦU TẠO AI',
+        style: TextStyle(
+          fontSize: isLandscape ? 12.sp : 14.sp,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
         ),
       ),
+    );
+  }
+
+  Widget _buildResultCard() {
+    return Consumer<AudioProvider>(
+      builder: (context, audioProvider, child) {
+        final isPlayingCurrent = audioProvider.isPlaying &&
+            audioProvider.currentlyPlaying?.id == _generatedAudio!.id;
+
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: AppColors.primary,
+              width: isPlayingCurrent ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              _ScaleButton(
+                onTap: () {
+                  if (isPlayingCurrent) {
+                    audioProvider.stopAudio();
+                  } else {
+                    audioProvider.playAudio(_generatedAudio!);
+                  }
+                },
+                child: Container(
+                  width: 32.w,
+                  height: 32.w,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isPlayingCurrent
+                        ? AppColors.primary
+                        : AppColors.cardElevated,
+                  ),
+                  child: Icon(
+                    isPlayingCurrent
+                        ? Icons.stop_rounded
+                        : Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 18.sp,
+                  ),
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _generatedAudio!.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      _generatedAudio!.hasLocalFile
+                          ? 'Đã lưu ✓'
+                          : 'Bản nghe thử AI',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 10.sp,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildPopupMenu(context, audioProvider, isPlayingCurrent),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPopupMenu(BuildContext context, AudioProvider audioProvider,
+      bool isPlayingCurrent) {
+    return PopupMenuButton<String>(
+      icon: Icon(
+        Icons.more_vert_rounded,
+        color: AppColors.textSecondary,
+        size: 20.sp,
+      ),
+      color: AppColors.cardElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12.r),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      onSelected: (value) async {
+        if (value == 'play') {
+          if (isPlayingCurrent) {
+            await audioProvider.stopAudio();
+          } else {
+            await audioProvider.playAudio(_generatedAudio!);
+          }
+        } else if (value == 'set_greeting') {
+          AudioModel target = _generatedAudio!;
+          if (!target.hasLocalFile) {
+            target = await audioProvider.addAndDownloadGeneratedAudio(target);
+            setState(() {
+              _generatedAudio = target;
+            });
+          }
+          await audioProvider.setAsGreeting(target.id);
+          UiUtils.showSuccess(context, 'Đã đặt làm Lời Chào ✓');
+        } else if (value == 'set_goodbye') {
+          AudioModel target = _generatedAudio!;
+          if (!target.hasLocalFile) {
+            target = await audioProvider.addAndDownloadGeneratedAudio(target);
+            setState(() {
+              _generatedAudio = target;
+            });
+          }
+          await audioProvider.setAsGoodbye(target.id);
+          UiUtils.showSuccess(context, 'Đã đặt làm Lời Tạm Biệt ✓');
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'play',
+          child: Row(
+            children: [
+              Icon(
+                isPlayingCurrent
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+                color: AppColors.primary,
+                size: 18.sp,
+              ),
+              SizedBox(width: 8.w),
+              Text('Nghe thử', style: TextStyle(fontSize: 13.sp)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'set_greeting',
+          child: Row(
+            children: [
+              Icon(Icons.waving_hand_rounded,
+                  color: AppColors.primary, size: 18.sp),
+              SizedBox(width: 8.w),
+              Text('Đặt Lời Chào', style: TextStyle(fontSize: 13.sp)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'set_goodbye',
+          child: Row(
+            children: [
+              Icon(Icons.directions_car_rounded,
+                  color: AppColors.success, size: 18.sp),
+              SizedBox(width: 8.w),
+              Text('Đặt Lời Tạm Biệt', style: TextStyle(fontSize: 13.sp)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

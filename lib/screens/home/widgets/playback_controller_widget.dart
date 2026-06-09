@@ -16,7 +16,7 @@ class PlaybackControllerWidget extends StatelessWidget {
         final hasGoodbye = audioProvider.activeGoodbye != null;
 
         return Container(
-          padding: EdgeInsets.all(16.w),
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
           decoration: BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(16.r),
@@ -25,25 +25,6 @@ class PlaybackControllerWidget extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.settings_remote_rounded,
-                    color: AppColors.primary,
-                    size: 18.sp,
-                  ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'Bộ điều khiển hệ thống xe',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16.h),
               Row(
                 children: [
                   Expanded(
@@ -59,7 +40,7 @@ class PlaybackControllerWidget extends StatelessWidget {
                       onTap: () => audioProvider.playGreetingViaNative(),
                     ),
                   ),
-                  SizedBox(width: 12.w),
+                  SizedBox(width: 8.w),
                   Expanded(
                     child: _ControllerButton(
                       label: 'Phát tạm biệt',
@@ -75,7 +56,7 @@ class PlaybackControllerWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(height: 12.h),
+              SizedBox(height: 8.h),
               _ScaleButton(
                 onTap: () => audioProvider.stopNativeAudio(),
                 child: ClipRRect(
@@ -87,7 +68,7 @@ class PlaybackControllerWidget extends StatelessWidget {
                       splashColor: AppColors.primary.withOpacity(0.3),
                       child: Container(
                         width: double.infinity,
-                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        padding: EdgeInsets.symmetric(vertical: 8.h),
                         decoration: BoxDecoration(
                           border:
                               Border.all(color: AppColors.primary, width: 1.5),
@@ -103,14 +84,14 @@ class PlaybackControllerWidget extends StatelessWidget {
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(Icons.power_settings_new_rounded,
-                                  color: Colors.white, size: 16.sp),
+                                  color: Colors.white, size: 14.sp),
                             ),
-                            SizedBox(width: 10.w),
+                            SizedBox(width: 8.w),
                             Text(
-                              'DỪNG PHÁT NGAY LẬP TỨC',
+                              'DỪNG PHÁT',
                               style: TextStyle(
                                 color: AppColors.textPrimary,
-                                fontSize: 12.sp,
+                                fontSize: 11.sp,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.5,
                               ),
@@ -164,7 +145,7 @@ class _ControllerButton extends StatelessWidget {
               splashColor: color.withOpacity(0.3),
               highlightColor: color.withOpacity(0.1),
               child: Container(
-                padding: EdgeInsets.all(12.w),
+                padding: EdgeInsets.all(8.w),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12.r),
                   border: Border.all(

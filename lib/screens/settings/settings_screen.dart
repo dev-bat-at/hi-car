@@ -8,8 +8,8 @@ import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/audio_provider.dart';
 import '../../providers/settings_provider.dart';
-import '../../data/services/api_service.dart';
-import '../../core/utils/device_utils.dart';
+import '../../core/logger.dart';
+import 'package:intl/intl.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -32,170 +32,179 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(height: 16.h),
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final isLandscape = orientation == Orientation.landscape;
 
-              // Title Section
-              _buildSectionTitle('CHỨC NĂNG HỆ THỐNG'),
-
-              _SettingsTile(
-                icon: Icons.bolt_rounded,
-                iconColor: AppColors.primary,
-                title: 'Tạo Giọng Nói AI',
-                subtitle: 'Soạn lời chào cá nhân hóa cho xe',
-                onTap: () => context.push('/gen-audio'),
-              ),
-
-              _buildSectionTitle('CHẾ ĐỘ KẾT NỐI XE'),
-
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                child: Container(
-                  padding: EdgeInsets.all(16.w),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(16.r),
-                    border: Border.all(color: AppColors.primary),
-                  ),
+            if (isLandscape) {
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: EdgeInsets.all(10.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          settings.connectionMode == 'phone_bluetooth'
-                              ? Icons.bluetooth_rounded
-                              : (settings.connectionMode == 'phone_android_auto'
-                                  ? Icons.directions_car_filled_rounded
-                                  : Icons.developer_board_rounded),
-                          color: Colors.white,
-                          size: 20.sp,
-                        ),
-                      ),
-                      SizedBox(width: 16.w),
+                      // Cột trái
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Đang sử dụng',
-                              style: TextStyle(
-                                  color: AppColors.textHint, fontSize: 10.sp),
+                            _buildSectionTitle('CHỨC NĂNG HỆ THỐNG'),
+                            _SettingsTile(
+                              icon: Icons.bolt_rounded,
+                              iconColor: AppColors.primary,
+                              title: 'Tạo Giọng Nói AI',
+                              subtitle: 'Soạn lời chào cá nhân hóa cho xe',
+                              onTap: () => context.push('/gen-audio'),
                             ),
-                            Text(
-                              settings.connectionMode == 'phone_bluetooth'
-                                  ? 'Điện thoại + Bluetooth'
-                                  : (settings.connectionMode ==
-                                          'android_screen_mode'
-                                      ? 'Màn hình Android độ'
-                                      : (settings.connectionMode ==
-                                              'android_box_mode'
-                                          ? 'Android Box'
-                                          : 'Điện thoại + Android Auto')),
-                              style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 15.sp,
-                                fontWeight: FontWeight.bold,
+                            _buildSectionTitle('CHẾ ĐỘ KẾT NỐI XE'),
+                            _buildConnectionModeCard(context, settings),
+                            _buildSectionTitle('CẤU HÌNH TỰ ĐỘNG PHÁT'),
+                            _SettingsSwitchTile(
+                              icon: Icons.power_rounded,
+                              iconColor: AppColors.success,
+                              title: 'Tự động phát lời chào',
+                              subtitle: 'Phát âm thanh tự động',
+                              value: settings.autoPlayEnabled,
+                              onChanged: (val) => settings.setAutoPlay(val),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Cột phải
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionTitle('HỖ TRỢ & TÀI KHOẢN'),
+                            _SettingsTile(
+                              icon: Icons.bug_report_rounded,
+                              iconColor: AppColors.warning,
+                              title: 'Báo cáo lỗi (Gửi Bug)',
+                              subtitle: 'Gửi logs lỗi hệ thống',
+                              onTap: () => _showBugReportDialog(context),
+                            ),
+                            _SettingsTile(
+                              icon: Icons.logout_rounded,
+                              iconColor: AppColors.textHint,
+                              title: 'Đăng xuất tài khoản',
+                              subtitle: 'Thoát hệ thống',
+                              onTap: () => _showLogoutConfirm(context, auth),
+                            ),
+                            _buildSectionTitle('CÀI ĐẶT NÂNG CAO'),
+                            _SettingsTile(
+                              icon: Icons.security_rounded,
+                              iconColor: AppColors.info,
+                              title: 'Quyền Hệ Thống',
+                              subtitle: 'Cấp lại quyền ứng dụng',
+                              onTap: () => context
+                                  .push('/permission-config?fromSettings=true'),
+                            ),
+                            _SettingsSwitchTile(
+                              icon: Icons.bug_report_rounded,
+                              iconColor: Colors.amber,
+                              title: 'Chế độ Demo (Beta)',
+                              subtitle: 'Thử nghiệm giọng mặc định',
+                              value: settings.isBetaMode,
+                              onChanged: (v) {
+                                settings.setBetaMode(v);
+                                context.read<AudioProvider>().setBetaMode(v);
+                              },
+                            ),
+                            SizedBox(height: 32.h),
+                            Center(
+                              child: Text(
+                                'Giọng Thương Gia v1.0.0',
+                                style: TextStyle(
+                                  color: AppColors.textHint,
+                                  fontSize: 9.sp,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      ActionChip(
-                        label: const Text('THAY ĐỔI'),
-                        onPressed: () =>
-                            context.push('/connection-mode?fromSettings=true'),
-                        backgroundColor: AppColors.primary,
-                        side: BorderSide.none,
-                        labelStyle: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.sp,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
                     ],
                   ),
                 ),
-              ),
+              );
+            }
 
-              _buildSectionTitle('CẤU HÌNH TỰ ĐỘNG PHÁT'),
-
-              _SettingsSwitchTile(
-                icon: Icons.power_rounded,
-                iconColor: AppColors.success,
-                title: 'Tự động phát lời chào',
-                subtitle: 'Kích hoạt phát âm thanh tự động theo chế độ kết nối',
-                value: settings.autoPlayEnabled,
-                onChanged: (val) => settings.setAutoPlay(val),
-              ),
-
-              _buildSectionTitle('HỖ TRỢ & TÀI KHOẢN'),
-
-              _SettingsTile(
-                icon: Icons.bug_report_rounded,
-                iconColor: AppColors.warning,
-                title: 'Báo cáo lỗi (Gửi Bug)',
-                subtitle: 'Gửi logs và thông tin lỗi hệ thống xe',
-                onTap: () => _showBugReportDialog(context),
-              ),
-
-              _SettingsTile(
-                icon: Icons.logout_rounded,
-                iconColor: AppColors.textHint,
-                title: 'Đăng xuất tài khoản',
-                subtitle: 'Thoát hệ thống trên thiết bị này',
-                onTap: () => _showLogoutConfirm(context, auth),
-              ),
-
-              _buildSectionTitle('CÀI ĐẶT NÂNG CAO'),
-
-              _SettingsTile(
-                icon: Icons.security_rounded,
-                iconColor: AppColors.info,
-                title: 'Cấu Hình Quyền Hệ Thống',
-                subtitle: 'Kiểm tra và cấp lại các quyền ứng dụng',
-                onTap: () =>
-                    context.push('/permission-config?fromSettings=true'),
-              ),
-
-              // _SettingsTile(
-              //   icon: Icons.no_accounts_rounded,
-              //   iconColor: AppColors.error,
-              //   title: 'Xóa tài khoản',
-              //   subtitle: 'Xóa vĩnh viễn toàn bộ dữ liệu & audio',
-              //   onTap: () => _showDeleteConfirm(context, auth),
-              // ),
-
-              _SettingsSwitchTile(
-                icon: Icons.bug_report_rounded,
-                iconColor: Colors.amber,
-                title: 'Chế độ Demo (Beta)',
-                subtitle: 'Sử dụng thử nghiệm giọng mặc định',
-                value: settings.isBetaMode,
-                onChanged: (v) {
-                  settings.setBetaMode(v);
-                  context.read<AudioProvider>().setBetaMode(v);
-                },
-              ),
-              SizedBox(height: 20.h),
-              Center(
-                child: Text(
-                  'Giọng Thương Gia v1.0.0 (Limited Edition)',
-                  style: TextStyle(
-                    color: AppColors.textHint,
-                    fontSize: 11.sp,
+            // Dạng dọc mặc định
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: 16.h),
+                  _buildSectionTitle('CHỨC NĂNG HỆ THỐNG'),
+                  _SettingsTile(
+                    icon: Icons.bolt_rounded,
+                    iconColor: AppColors.primary,
+                    title: 'Tạo Giọng Nói AI',
+                    subtitle: 'Soạn lời chào cá nhân hóa cho xe',
+                    onTap: () => context.push('/gen-audio'),
                   ),
-                ),
+                  _buildSectionTitle('CHẾ ĐỘ KẾT NỐI XE'),
+                  _buildConnectionModeCard(context, settings),
+                  _buildSectionTitle('CẤU HÌNH TỰ ĐỘNG PHÁT'),
+                  _SettingsSwitchTile(
+                    icon: Icons.power_rounded,
+                    iconColor: AppColors.success,
+                    title: 'Tự động phát lời chào',
+                    subtitle:
+                        'Kích hoạt phát âm thanh tự động theo chế độ kết nối',
+                    value: settings.autoPlayEnabled,
+                    onChanged: (val) => settings.setAutoPlay(val),
+                  ),
+                  _buildSectionTitle('HỖ TRỢ & TÀI KHOẢN'),
+                  _SettingsTile(
+                    icon: Icons.bug_report_rounded,
+                    iconColor: AppColors.warning,
+                    title: 'Báo cáo lỗi (Gửi Bug)',
+                    subtitle: 'Gửi logs và thông tin lỗi hệ thống xe',
+                    onTap: () => _showBugReportDialog(context),
+                  ),
+                  _SettingsTile(
+                    icon: Icons.logout_rounded,
+                    iconColor: AppColors.textHint,
+                    title: 'Đăng xuất tài khoản',
+                    subtitle: 'Thoát hệ thống trên thiết bị này',
+                    onTap: () => _showLogoutConfirm(context, auth),
+                  ),
+                  _buildSectionTitle('CÀI ĐẶT NÂNG CAO'),
+                  _SettingsTile(
+                    icon: Icons.security_rounded,
+                    iconColor: AppColors.info,
+                    title: 'Cấu Hình Quyền Hệ Thống',
+                    subtitle: 'Kiểm tra và cấp lại các quyền ứng dụng',
+                    onTap: () =>
+                        context.push('/permission-config?fromSettings=true'),
+                  ),
+                  _SettingsSwitchTile(
+                    icon: Icons.bug_report_rounded,
+                    iconColor: Colors.amber,
+                    title: 'Chế độ Demo (Beta)',
+                    subtitle: 'Sử dụng thử nghiệm giọng mặc định',
+                    value: settings.isBetaMode,
+                    onChanged: (v) {
+                      settings.setBetaMode(v);
+                      context.read<AudioProvider>().setBetaMode(v);
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+                  Center(
+                    child: Text(
+                      'Giọng Thương Gia v1.0.0 (Limited Edition)',
+                      style: TextStyle(
+                        color: AppColors.textHint,
+                        fontSize: 11.sp,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 20.h),
+                ],
               ),
-              SizedBox(height: 20.h),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -203,12 +212,12 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: EdgeInsets.only(left: 16.w, top: 20.h, bottom: 8.h),
+      padding: EdgeInsets.only(left: 16.w, top: 18.h, bottom: 6.h),
       child: Text(
         title,
         style: TextStyle(
           color: AppColors.textSecondary,
-          fontSize: 11.sp,
+          fontSize: 10.sp,
           fontWeight: FontWeight.bold,
           letterSpacing: 1.0,
         ),
@@ -216,88 +225,249 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _showBugReportDialog(BuildContext context) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardElevated,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-        title: Text(
-          'Báo cáo lỗi',
-          style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 15.sp,
-              fontWeight: FontWeight.bold),
+  Widget _buildConnectionModeCard(
+      BuildContext context, SettingsProvider settings) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Container(
+        padding: EdgeInsets.all(12.w),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(16.r),
+          border: Border.all(color: AppColors.primary.withOpacity(0.5)),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Text(
-              'Nhập chi tiết lỗi hoặc hiện tượng ngắt âm thanh trên xe của bạn để chúng tôi sửa lỗi:',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12.sp),
+            Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                settings.connectionMode == 'phone_bluetooth'
+                    ? Icons.bluetooth_rounded
+                    : (settings.connectionMode == 'phone_android_auto'
+                        ? Icons.directions_car_filled_rounded
+                        : Icons.developer_board_rounded),
+                color: Colors.white,
+                size: 18.sp,
+              ),
             ),
-            SizedBox(height: 12.h),
-            TextField(
-              controller: controller,
-              maxLines: 4,
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 13.sp),
-              decoration: const InputDecoration(
-                hintText:
-                    'Ví dụ: Khi Android Auto cắm dây, audio bị ngắt sau 2 giây...',
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Chế độ hiện tại',
+                    style: TextStyle(color: AppColors.textHint, fontSize: 9.sp),
+                  ),
+                  Text(
+                    settings.connectionMode == 'phone_bluetooth'
+                        ? 'Điện thoại + Bluetooth'
+                        : (settings.connectionMode == 'android_screen_mode'
+                            ? 'Màn hình Android'
+                            : (settings.connectionMode == 'android_box_mode'
+                                ? 'Android Box'
+                                : 'Android Auto')),
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ActionChip(
+              label: const Text('ĐỔI'),
+              onPressed: () =>
+                  context.push('/connection-mode?fromSettings=true'),
+              backgroundColor: AppColors.primary,
+              side: BorderSide.none,
+              labelStyle: TextStyle(
+                color: Colors.white,
+                fontSize: 9.sp,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child:
-                const Text('Hủy', style: TextStyle(color: AppColors.textHint)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final description = controller.text.trim();
-              if (description.isEmpty) {
-                UiUtils.showError(context, 'Vui lòng nhập chi tiết lỗi');
-                return;
-              }
-
-              EasyLoading.show(status: 'Đang gửi báo cáo...');
-              try {
-                // Gather device context and send log
-                final deviceContext = await DeviceUtils.GetDeviceContext();
-                await ApiService.instance.logError({
-                  'error_type': 'other', // User reported bug
-                  'description': 'USER_REPORT: $description',
-                  ...deviceContext,
-                  'sync_status': 'unknown',
-                });
-
-                // Dismiss loading and dialog only after SUCCESS
-                EasyLoading.dismiss();
-
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  UiUtils.showSuccess(
-                      context, 'Đã gửi báo cáo lỗi thành công! Cảm ơn bạn.');
-                }
-              } catch (e) {
-                EasyLoading.dismiss();
-                if (context.mounted) {
-                  UiUtils.showError(context, 'Không thể gửi báo cáo: $e');
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white),
-            child: const Text('Gửi báo cáo'),
-          ),
-        ],
       ),
     );
+  }
+
+  void _showBugReportDialog(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    showDialog(
+      context: context,
+      builder: (context) => ListenableBuilder(
+        listenable: AppLogger.instance,
+        builder: (context, _) {
+          final logs = AppLogger.instance.logs;
+
+          return AlertDialog(
+            backgroundColor: AppColors.cardElevated,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.r)),
+            insetPadding: EdgeInsets.symmetric(
+                horizontal: isLandscape ? 140.w : 24.w, vertical: 20.h),
+            contentPadding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+            titlePadding: EdgeInsets.fromLTRB(16.w, 16.h, 8.w, 0),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Lịch sử lỗi hệ thống',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+                if (logs.isNotEmpty)
+                  TextButton(
+                    onPressed: () => AppLogger.instance.clear(),
+                    child: Text('Xóa hết',
+                        style:
+                            TextStyle(color: AppColors.error, fontSize: 10.sp)),
+                  ),
+              ],
+            ),
+            content: Container(
+              width: isLandscape ? 0.45.sw : double.maxFinite,
+              constraints: BoxConstraints(maxHeight: 300.h),
+              child: logs.isEmpty
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_outline_rounded,
+                            color: AppColors.success, size: 48.sp),
+                        SizedBox(height: 16.h),
+                        Text(
+                          'Hiện tại chưa ghi nhận lỗi nào.',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 13.sp),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: logs.length,
+                      separatorBuilder: (_, __) =>
+                          Divider(color: AppColors.border, height: 8.h),
+                      itemBuilder: (context, index) {
+                        final log = logs[index];
+                        final timeStr =
+                            DateFormat('HH:mm:ss').format(log.timestamp);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 6.w, vertical: 2.h),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _getLogColor(log.type).withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(4.r),
+                                  ),
+                                  child: Text(
+                                    log.type?.toUpperCase() ?? 'INFO',
+                                    style: TextStyle(
+                                      color: _getLogColor(log.type),
+                                      fontSize: 9.sp,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8.w),
+                                Text(
+                                  timeStr,
+                                  style: TextStyle(
+                                      color: AppColors.textHint,
+                                      fontSize: 10.sp),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              log.message,
+                              style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 12.sp),
+                            ),
+                            SizedBox(height: 8.h),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton.icon(
+                                onPressed: () => _sendLog(context, log),
+                                icon: Icon(Icons.send_rounded, size: 12.sp),
+                                label: Text('Gửi báo cáo',
+                                    style: TextStyle(fontSize: 11.sp)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 12.w, vertical: 0),
+                                  minimumSize: Size(0, 28.h),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8.r)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Đóng',
+                    style: TextStyle(color: AppColors.textHint)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Color _getLogColor(String? type) {
+    switch (type) {
+      case 'network_error':
+        return AppColors.error;
+      case 'sync_error':
+        return AppColors.warning;
+      case 'playback_error':
+        return Colors.orange;
+      case 'native_playback_error':
+        return Colors.redAccent;
+      default:
+        return AppColors.info;
+    }
+  }
+
+  Future<void> _sendLog(BuildContext context, AppLog log) async {
+    EasyLoading.show(status: 'Đang gửi...');
+    try {
+      await AppLogger.instance.sendReport(log);
+      EasyLoading.dismiss();
+      if (context.mounted) {
+        UiUtils.showSuccess(context, 'Đã gửi báo cáo lỗi thành công!');
+      }
+    } catch (e) {
+      EasyLoading.dismiss();
+      if (context.mounted) {
+        UiUtils.showError(context, 'Lỗi khi gửi: $e');
+      }
+    }
   }
 
   void _showLogoutConfirm(BuildContext context, AuthProvider auth) {

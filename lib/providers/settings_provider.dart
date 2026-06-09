@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
 import '../native/bluetooth_channel.dart';
 import '../native/service_channel.dart';
+import '../core/logger.dart';
 
 class SettingsProvider extends ChangeNotifier {
   bool _autoPlayEnabled = true;
@@ -103,6 +104,11 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setString('connection_mode', _connectionMode);
       _pendingConnectionMode = null;
 
+      AppLogger.instance.log(
+        'Đã đổi chế độ kết nối: $oldMode -> $_connectionMode',
+        type: 'user_action',
+      );
+
       // 🧹 DỌN DẸP KHI ĐỔI MODE
       if (oldMode == 'phone_bluetooth' &&
           _connectionMode != 'phone_bluetooth') {
@@ -120,6 +126,10 @@ class SettingsProvider extends ChangeNotifier {
         await BluetoothChannel.instance.setConnectionMode(_connectionMode);
       } catch (e) {
         debugPrint('Sync new mode error: $e');
+        AppLogger.instance.log(
+          'Lỗi đồng bộ mode sang Native: $e',
+          type: 'native_error',
+        );
       }
     }
 

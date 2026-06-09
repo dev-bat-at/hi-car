@@ -33,8 +33,8 @@ class OverlayStrip extends StatefulWidget {
 }
 
 class _OverlayStripState extends State<OverlayStrip> {
-  static const Color _neonCyan = Color(0xFF00E5FF);
-  static const Color _skyBlue = Color(0xFF005CFF);
+  static const Color _neonCyan = Color(0xFF00FBFF);
+  static const Color _neonBlue = Color(0xFF007BFF);
   bool _isGreetingPlaying = false;
   bool _isGoodbyePlaying = false;
   String? _errorMessage;
@@ -114,12 +114,31 @@ class _OverlayStripState extends State<OverlayStrip> {
         children: [
           // 1. Background layer
           Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(48),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(48),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
             child: GestureDetector(
               onTap: () async {
                 if (_currentShape == BoxShape.rectangle) {
                   await FlutterOverlayWindow.resizeOverlay(
-                    _toPhysicalPixels(50),
-                    _toPhysicalPixels(150), // Increased height for 3 buttons
+                    _toPhysicalPixels(80),
+                    _toPhysicalPixels(
+                        250), // Standard size from OverlayProvider
                     true,
                   );
                   setState(() {
@@ -136,23 +155,16 @@ class _OverlayStripState extends State<OverlayStrip> {
                   });
                 }
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _skyBlue,
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 1.5,
-                  ),
-                ),
-              ),
+              child: Container(color: Colors.transparent),
             ),
           ),
           // 2. Buttons layer
           Positioned.fill(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                const SizedBox(height: 4),
                 Expanded(
                   child: _buildNeonButton(
                     icon: _isGreetingPlaying
@@ -175,38 +187,45 @@ class _OverlayStripState extends State<OverlayStrip> {
                 ),
                 Expanded(
                   child: _buildNeonButton(
-                    icon: Icons.launch_rounded,
+                    icon: Icons.grid_view_rounded,
                     iconColor: Colors.white,
                     isGlow: false,
-                    onTap: () {
-                      print('Nhấn mở app');
-                      _openApp();
-                    },
+                    onTap: _openApp,
                   ),
                 ),
+                const SizedBox(height: 4),
               ],
             ),
           ),
-          if (_errorMessage != null)
-            Positioned(
-              left: 10,
-              bottom: 10,
-              right: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _errorMessage!,
-                  style: const TextStyle(color: Colors.white, fontSize: 10),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                ),
-              ),
-            ),
+          // if (_errorMessage != null)
+          //   Positioned(
+          //     left: 4,
+          //     bottom: 4,
+          //     right: 4,
+          //     child: AnimatedOpacity(
+          //       opacity: _errorMessage != null ? 1.0 : 0.0,
+          //       duration: const Duration(milliseconds: 300),
+          //       child: Container(
+          //         padding:
+          //             const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          //         decoration: BoxDecoration(
+          //           color: Colors.black87,
+          //           borderRadius: BorderRadius.circular(12),
+          //           border:
+          //               Border.all(color: Colors.redAccent.withOpacity(0.5)),
+          //         ),
+          //         child: Text(
+          //           _errorMessage!,
+          //           style: const TextStyle(
+          //               color: Colors.redAccent,
+          //               fontSize: 8,
+          //               fontWeight: FontWeight.bold),
+          //           textAlign: TextAlign.center,
+          //           maxLines: 2,
+          //         ),
+          //       ),
+          //     ),
+          //   ),
         ],
       ),
     );
@@ -223,16 +242,29 @@ class _OverlayStripState extends State<OverlayStrip> {
       child: Center(
         child: ClipOval(
           child: Material(
-            color: const Color(0xFF0A1929),
+            color: Color(0xFF083C26),
             child: InkWell(
               onTap: onTap,
               splashColor: iconColor.withOpacity(0.3),
               child: Container(
-                width: 60,
-                height: 60,
+                width: 65,
+                height: 65,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.0),
+                  gradient: isGlow
+                      ? LinearGradient(
+                          colors: [
+                            _neonCyan.withOpacity(0.2),
+                            _neonBlue.withOpacity(0.4)
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  border: Border.all(
+                    color: isGlow ? _neonCyan : Colors.white.withOpacity(0.15),
+                    width: 1.2,
+                  ),
                 ),
                 child: _PulseWrapper(
                   key: ValueKey('pulse_$isGlow'),
@@ -243,10 +275,10 @@ class _OverlayStripState extends State<OverlayStrip> {
                     child: Icon(
                       icon,
                       color: iconColor,
-                      size: 48,
+                      size: 30,
                       shadows: isGlow
                           ? [
-                              Shadow(color: iconColor, blurRadius: 15),
+                              Shadow(color: iconColor, blurRadius: 10),
                             ]
                           : null,
                     ),

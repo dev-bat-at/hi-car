@@ -86,7 +86,7 @@ class AudioModel {
           : null,
       isActiveGreeting: json['is_active_greeting'] as bool? ?? false,
       isActiveGoodbye: json['is_active_goodbye'] as bool? ?? false,
-      durationSeconds: json['duration_seconds'] as int? ?? 0,
+      durationSeconds: json['duration'] as int? ?? 0,
       description: json['description'] as String?,
       assetPath: json['asset_path'] as String?,
     );

@@ -8,6 +8,7 @@ import '../data/repositories/audio_repository.dart';
 import '../data/services/sync_service.dart';
 import '../native/service_channel.dart';
 import '../core/constants.dart';
+import '../core/logger.dart';
 
 enum SyncStatus { idle, syncing, success, error }
 
@@ -125,6 +126,10 @@ class AudioProvider extends ChangeNotifier {
       _syncStatus = SyncStatus.error;
       _syncError = e.toString();
       _syncMessage = 'Lỗi đồng bộ';
+      AppLogger.instance.log(
+        'Lỗi đồng bộ server: $e',
+        type: 'sync_error',
+      );
     }
 
     notifyListeners();
@@ -143,6 +148,10 @@ class AudioProvider extends ChangeNotifier {
     _audioList =
         await AudioRepository.instance.setGreetingAudio(audioId, _audioList);
     await _syncNativePaths();
+    AppLogger.instance.log(
+      'Người dùng chọn lời chào: $audioId',
+      type: 'user_action',
+    );
     notifyListeners();
   }
 
@@ -151,6 +160,10 @@ class AudioProvider extends ChangeNotifier {
     _audioList =
         await AudioRepository.instance.setGoodbyeAudio(audioId, _audioList);
     await _syncNativePaths();
+    AppLogger.instance.log(
+      'Người dùng chọn lời tạm biệt: $audioId',
+      type: 'user_action',
+    );
     notifyListeners();
   }
 
@@ -182,9 +195,14 @@ class AudioProvider extends ChangeNotifier {
           notifyListeners();
         }
       });
-    } catch (_) {
+    } catch (e) {
       _isPlaying = false;
       _currentlyPlaying = null;
+      AppLogger.instance.log(
+        'Lỗi phát nhạc: ${audio.title}',
+        type: 'playback_error',
+        details: {'audioId': audio.id, 'error': e.toString()},
+      );
       notifyListeners();
     }
   }
@@ -222,9 +240,18 @@ class AudioProvider extends ChangeNotifier {
 
       await ServiceChannel.instance.playGreeting(audioPath: path);
       _startWatchdog(audio?.durationSeconds ?? 15);
+
+      AppLogger.instance.log(
+        'Bắt đầu phát lời chào (Native): $path',
+        type: 'native_action',
+      );
       return true;
     } catch (e) {
       debugPrint('AudioProvider: playGreetingViaNative error: $e');
+      AppLogger.instance.log(
+        'Lỗi phát lời chào (Native): $e',
+        type: 'native_playback_error',
+      );
       _stopNativePlaybackState();
       return false;
     }
@@ -256,9 +283,18 @@ class AudioProvider extends ChangeNotifier {
 
       await ServiceChannel.instance.playGoodbye(audioPath: path);
       _startWatchdog(audio?.durationSeconds ?? 15);
+
+      AppLogger.instance.log(
+        'Bắt đầu phát lời tạm biệt (Native): $path',
+        type: 'native_action',
+      );
       return true;
     } catch (e) {
       debugPrint('AudioProvider: playGoodbyeViaNative error: $e');
+      AppLogger.instance.log(
+        'Lỗi phát lời tạm biệt (Native): $e',
+        type: 'native_playback_error',
+      );
       _stopNativePlaybackState();
       return false;
     }
@@ -269,8 +305,16 @@ class AudioProvider extends ChangeNotifier {
       debugPrint('AudioProvider: stopNativeAudio');
       _stopNativePlaybackState();
       await ServiceChannel.instance.stopAudio();
+      AppLogger.instance.log(
+        'Dừng phát nhạc Native',
+        type: 'native_action',
+      );
     } catch (e) {
       debugPrint('Native stopAudio error: $e');
+      AppLogger.instance.log(
+        'Lỗi khi dừng nhạc Native: $e',
+        type: 'native_error',
+      );
     }
   }
 
@@ -282,6 +326,10 @@ class AudioProvider extends ChangeNotifier {
       if (_isNativeGreetingPlaying || _isNativeGoodbyePlaying) {
         debugPrint(
             '⚠️ [AudioProvider] Watchdog triggered: Force stopping animation');
+        AppLogger.instance.log(
+          'Watchdog kích hoạt: Force stop animation (Native)',
+          type: 'native_warning',
+        );
         _stopNativePlaybackState();
       }
     });
@@ -303,6 +351,10 @@ class AudioProvider extends ChangeNotifier {
   Future<void> deleteAudio(String audioId) async {
     _audioList =
         await AudioRepository.instance.deleteAudio(audioId, _audioList);
+    AppLogger.instance.log(
+      'Người dùng xóa audio: $audioId',
+      type: 'user_action',
+    );
     notifyListeners();
   }
 
@@ -320,6 +372,10 @@ class AudioProvider extends ChangeNotifier {
 
     _audioList = [updatedAudio, ..._audioList];
     await AudioRepository.instance.saveLocalList(_audioList);
+    AppLogger.instance.log(
+      'Đã thêm audio mới tạo: ${audio.title}',
+      type: 'user_action',
+    );
     notifyListeners();
     return updatedAudio;
   }

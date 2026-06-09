@@ -271,12 +271,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         builder: (context, constraints) {
           final width = constraints.maxWidth;
           final height = constraints.maxHeight;
-
-          // 🟢 Trên Tablet (>600px), dùng kích thước thực tế làm chuẩn để KHÔNG bị phóng to.
-          // Trên Phone mang tính di động cao, dùng chuẩn 390x844 để tối ưu.
           final Size dynamicDesignSize =
               width > 600 ? Size(width, height) : const Size(390, 844);
-
           return ScreenUtilInit(
             designSize: dynamicDesignSize,
             minTextAdapt: true,
