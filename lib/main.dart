@@ -72,8 +72,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _audioProvider.addListener(_updateOverlayState);
 
     // 🟢 Chế độ Android Màn Độ: Khi phát xong thì thu nhỏ app
-    _audioProvider.onNativePlaybackComplete = () {
-      if (_settingsProvider.connectionMode == 'android_screen_mode') {
+    _audioProvider.onNativePlaybackComplete = (isManual) {
+      if (_settingsProvider.connectionMode == 'android_screen_mode' &&
+          !isManual) {
         debugPrint(
             'Main: Audio finished in android_screen_mode, minimizing app...');
         ServiceChannel.instance.minimizeApp();

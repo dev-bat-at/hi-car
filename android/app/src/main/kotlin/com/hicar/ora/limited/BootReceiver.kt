@@ -15,7 +15,9 @@ class BootReceiver : BroadcastReceiver() {
         val validActions = listOf(
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
-            "android.intent.action.QUICKBOOT_POWERON"
+            Intent.ACTION_REBOOT,
+            "android.intent.action.QUICKBOOT_POWERON",
+            "com.htc.intent.action.QUICKBOOT_POWERON"
         )
 
         if (intent.action in validActions) {
@@ -25,7 +27,12 @@ class BootReceiver : BroadcastReceiver() {
                 context
             }
             val prefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            
+            // Đọc mode từ prefs (Flutter lưu với prefix flutter.)
             val connectionMode = prefs.getString("flutter.connection_mode", "android_screen_mode") ?: "android_screen_mode"
+            
+            // 🟢 CHƯA ĐĂNG NHẬP THÌ KHÔNG PHÁT NHẠC
+            if (!prefs.contains("flutter.auth_token")) return
 
             val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
                 action = AudioForegroundService.ACTION_PLAY_GREETING

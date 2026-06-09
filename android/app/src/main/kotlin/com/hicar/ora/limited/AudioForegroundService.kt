@@ -115,11 +115,11 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
             ACTION_PLAY_GREETING -> {
                 val path = intent.getStringExtra("audioPath") ?: greetingAudioPath
-                playAudio(path)
+                playAudio(path, "greeting")
             }
             ACTION_PLAY_GOODBYE -> {
                 val path = intent.getStringExtra("audioPath") ?: goodbyeAudioPath
-                playAudio(path)
+                playAudio(path, "goodbye")
             }
             ACTION_PLAY_GREETING_DELAYED -> scheduleDelayedGreeting()
             ACTION_STOP_AUDIO -> stopPlayback()
@@ -168,11 +168,13 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     ): BrowserRoot {
         loadPrefs()
         if (connectionMode == "phone_android_auto" && clientPackageName.contains("gearhead")) {
-            handler.post {
+            // 🟢 THÊM ĐỘ TRỄ: Android Auto cần thời gian để thiết lập kênh âm thanh Bluetooth (A2DP)
+            // Nếu phát ngay lập tức, âm thanh có thể bị mất hoặc phát ra loa điện thoại
+            handler.postDelayed({
                 if (greetingAudioPath.isNotEmpty()) {
-                    playAudio(greetingAudioPath)
+                    playAudio(greetingAudioPath, "greeting")
                 }
-            }
+            }, 3000) 
         }
         return BrowserRoot("hicar_root", null)
     }
@@ -192,7 +194,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         cancelDelayedPlay()
         delayedRunnable = Runnable {
             if (greetingAudioPath.isNotEmpty()) {
-                playAudio(greetingAudioPath)
+                playAudio(greetingAudioPath, "greeting")
             }
         }
         handler.postDelayed(delayedRunnable!!, (delaySeconds * 1000).toLong())
@@ -203,7 +205,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         delayedRunnable = null
     }
 
-    private fun playAudio(path: String) {
+    private fun playAudio(path: String, type: String) {
         if (path.isEmpty()) return
 
         val granted = requestAudioFocus()
@@ -213,13 +215,15 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         try {
             mediaPlayer = MediaPlayer().apply {
+                // 🟢 ĐỔI SANG CONTENT_TYPE_MUSIC: Để tránh DSP của xe xử lý lọc nhiễu nhầm (gây rè)
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC) 
                         .build()
                 )
                 setDataSource(path)
+                setVolume(1.0f, 1.0f) // Đảm bảo âm lượng nguồn tối đa
                 prepare()
                 start()
                 setOnCompletionListener {
@@ -236,6 +240,9 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 }
             }
             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+            
+            // 🟢 THÔNG BÁO FLUTTER: Để UI cập nhật trạng thái đang phát (Pulsing animation)
+            HiCarPlugin.instance?.invokeServiceMethod("onPlaybackStarted", type)
         } catch (e: Exception) {
             releaseAudioFocus()
         }
@@ -263,11 +270,13 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
     private fun buildAudioFocusRequest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            // 🟢 DÙNG AUDIOFOCUS_GAIN_TRANSIENT: Để tạm dừng nhạc khác hoàn toàn thay vì chỉ giảm âm lượng (ducking)
+            // Giúp âm thanh Bluetooth ổn định hơn trên một số đầu giải trí xe hơi
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build()
                 )
                 .setOnAudioFocusChangeListener { change ->
@@ -291,7 +300,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             audioManager?.requestAudioFocus(
                 null,
                 AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
             ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
     }

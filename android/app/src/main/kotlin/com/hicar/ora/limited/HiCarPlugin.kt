@@ -114,6 +114,7 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             }
             "syncPrefs" -> {
                 syncPrefsToDeviceProtected()
+                syncFilesToDeviceProtected() // 🟢 Đồng bộ cả file âm thanh
                 result.success(true)
             }
             "openApp" -> {
@@ -135,6 +136,7 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             val allEntries = sourcePrefs.all
             val editor = destPrefs.edit()
             for ((key, value) in allEntries) {
+                // Key trong Flutter SharedPreferences bắt đầu bằng "flutter."
                 when (value) {
                     is String -> editor.putString(key, value)
                     is Boolean -> editor.putBoolean(key, value)
@@ -144,6 +146,49 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 }
             }
             editor.apply()
+        }
+    }
+
+    /**
+     * Sao chép các file âm thanh đang được chọn sang vùng nhớ an toàn (Device Protected Storage)
+     * để có thể phát nhạc ngay khi máy khởi động (kể cả khi chưa mở khóa màn hình).
+     */
+    private fun syncFilesToDeviceProtected() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+
+        val deviceContext = context.createDeviceProtectedStorageContext()
+        val prefs = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        
+        val greetingPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
+        val goodbyePath = prefs.getString("flutter.goodbye_audio_path", "") ?: ""
+
+        if (greetingPath.isNotEmpty()) {
+            copyFileToProtected(greetingPath, "boot_greeting.mp3")
+        }
+        if (goodbyePath.isNotEmpty()) {
+            copyFileToProtected(goodbyePath, "boot_goodbye.mp3")
+        }
+    }
+
+    private fun copyFileToProtected(sourcePath: String, destName: String) {
+        try {
+            val sourceFile = java.io.File(sourcePath)
+            if (!sourceFile.exists()) return
+
+            val deviceContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                context.createDeviceProtectedStorageContext()
+            } else {
+                context
+            }
+            
+            val destFile = java.io.File(deviceContext.filesDir, destName)
+            sourceFile.inputStream().use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

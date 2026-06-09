@@ -10,12 +10,15 @@ class ServiceChannel {
 
   static const _channel = MethodChannel(AppConstants.serviceChannel);
   VoidCallback? onPlaybackComplete;
+  void Function(String type)? onPlaybackStarted;
 
   void init() {
     _channel.setMethodCallHandler((call) async {
       debugPrint('ServiceChannel: Received method call: ${call.method}');
       if (call.method == 'onPlaybackComplete') {
         onPlaybackComplete?.call();
+      } else if (call.method == 'onPlaybackStarted') {
+        onPlaybackStarted?.call(call.arguments?.toString() ?? 'greeting');
       } else if (call.method == 'onNativeError') {
         final message =
             call.arguments?.toString() ?? 'Lỗi không xác định từ Native';

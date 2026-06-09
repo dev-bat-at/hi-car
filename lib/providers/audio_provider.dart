@@ -28,7 +28,8 @@ class AudioProvider extends ChangeNotifier {
   String? _activeGoodbyeId;
   bool _isNativeGreetingPlaying = false;
   bool _isNativeGoodbyePlaying = false;
-  VoidCallback? onNativePlaybackComplete; // Callback for UI to react
+  void Function(bool isManual)?
+      onNativePlaybackComplete; // Callback for UI to react
   Timer? _playbackWatchdog;
 
   List<AudioModel> get audioList {
@@ -87,7 +88,16 @@ class AudioProvider extends ChangeNotifier {
     ServiceChannel.instance.init();
     ServiceChannel.instance.onPlaybackComplete = () {
       debugPrint('🔔 [AudioProvider] NHẬN TÍN HIỆU: PHÁT XONG TỪ NATIVE');
-      _stopNativePlaybackState();
+      // Nếu là tự động phát xong (không phải bấm dừng thủ công)
+      _stopNativePlaybackState(isManual: false);
+    };
+
+    ServiceChannel.instance.onPlaybackStarted = (type) {
+      debugPrint(
+          '🔔 [AudioProvider] NHẬN TÍN HIỆU: BẮT ĐẦU PHÁT TỪ NATIVE ($type)');
+      _isNativeGreetingPlaying = type == 'greeting';
+      _isNativeGoodbyePlaying = type == 'goodbye';
+      notifyListeners();
     };
 
     // Auto-sync on startup if logged in
@@ -300,10 +310,11 @@ class AudioProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> stopNativeAudio() async {
+  Future<void> stopNativeAudio({bool isManual = true}) async {
     try {
-      debugPrint('AudioProvider: stopNativeAudio');
-      _stopNativePlaybackState();
+      debugPrint('AudioProvider: stopNativeAudio (isManual=$isManual)');
+      _stopNativePlaybackState(isManual: isManual);
+      // Luôn gọi lệnh stop xuống Native để đảm bảo dừng tuyệt đối
       await ServiceChannel.instance.stopAudio();
       AppLogger.instance.log(
         'Dừng phát nhạc Native',
@@ -330,12 +341,22 @@ class AudioProvider extends ChangeNotifier {
           'Watchdog kích hoạt: Force stop animation (Native)',
           type: 'native_warning',
         );
-        _stopNativePlaybackState();
+        _stopNativePlaybackState(isManual: false);
       }
     });
   }
 
-  void _stopNativePlaybackState() {
+  bool _isStoppingManually = false;
+
+  void _stopNativePlaybackState({bool isManual = false}) {
+    if (isManual) {
+      _isStoppingManually = true;
+      // Reset flag sau 2 giây để đón nhận các sự kiện tiếp theo
+      Future.delayed(const Duration(seconds: 2), () {
+        _isStoppingManually = false;
+      });
+    }
+
     _playbackWatchdog?.cancel();
     _player.stop();
     _isPlaying = false;
@@ -343,7 +364,11 @@ class AudioProvider extends ChangeNotifier {
     _isNativeGreetingPlaying = false;
     _isNativeGoodbyePlaying = false;
     notifyListeners();
-    onNativePlaybackComplete?.call(); // 🟢 Trigger callback
+
+    // Nếu nhận tín hiệu tự động dừng từ Native nhưng ta vừa bấm dừng thủ công trước đó
+    // thì vẫn coi là dừng thủ công để tránh bị minimize app.
+    final finalIsManual = isManual || _isStoppingManually;
+    onNativePlaybackComplete?.call(finalIsManual);
   }
 
   // ===== Action Methods =====
@@ -393,6 +418,9 @@ class AudioProvider extends ChangeNotifier {
       await prefs.setString('greeting_audio_path', greetingPath);
     if (goodbyePath != null)
       await prefs.setString('goodbye_audio_path', goodbyePath);
+
+    // 🟢 Đồng bộ sang vùng nhớ an toàn cho khởi động (Direct Boot)
+    await ServiceChannel.instance.syncPrefs();
   }
 
   @override
