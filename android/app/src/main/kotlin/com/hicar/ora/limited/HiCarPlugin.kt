@@ -254,7 +254,7 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             }
             "disconnectDevice" -> {
                 val address = call.argument<String>("address") ?: ""
-                BluetoothReceiver.connectDevice(context, address) { success ->
+                BluetoothReceiver.disconnectDevice(context, address) { success ->
                    result.success(success)
                 }
             }

@@ -113,11 +113,26 @@ class SettingsProvider extends ChangeNotifier {
       if (oldMode == 'phone_bluetooth' &&
           _connectionMode != 'phone_bluetooth') {
         try {
-          // Tắt quét Bluetooth và xóa thiết bị mục tiêu nếu rời khỏi mode này
+          // Ngắt kết nối tuyệt đối với thiết bị đã ghép nối
+          final targetAddress =
+              prefs.getString(AppConstants.keyTargetDeviceAddress) ?? '';
+          if (targetAddress.isNotEmpty) {
+            await BluetoothChannel.instance.disconnectDevice(targetAddress);
+          }
           await BluetoothChannel.instance.stopDiscovery();
           await BluetoothChannel.instance.clearTargetDevice();
         } catch (e) {
           debugPrint('Clean up phone_bluetooth error: $e');
+        }
+      }
+
+      if (oldMode == 'phone_android_auto' &&
+          _connectionMode != 'phone_android_auto') {
+        try {
+          // Ngắt kết nối tuyệt đối với Android Auto bằng cách dừng Service
+          await ServiceChannel.instance.stopService();
+        } catch (e) {
+          debugPrint('Clean up phone_android_auto error: $e');
         }
       }
 

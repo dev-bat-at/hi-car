@@ -10,6 +10,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.media.MediaBrowserServiceCompat
+import android.util.Log
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.FlutterEngine
 import java.io.File
@@ -43,6 +44,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         @Volatile var connectionMode: String = "phone_bluetooth"
         @Volatile var targetDeviceAddress: String = ""
         @Volatile var delaySeconds: Int = 5
+        @Volatile var autoPlayEnabled: Boolean = true
         @Volatile var greetingAudioPath: String = ""
         @Volatile var goodbyeAudioPath: String = ""
     }
@@ -61,27 +63,47 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
-        loadPrefs()
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        setupNotificationChannel()
-        setupMediaSession()
-        acquireWakeLock()
-        buildAudioFocusRequest()
+        Log.d("HiCarService", "Service onCreate started")
+        
+        try {
+            // 1. Initialize core managers safely
+            audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            
+            // 2. Setup Notification & MediaSession FIRST
+            setupNotificationChannel()
+            setupMediaSession()
+            
+            // 3. Load preferences (this will trigger updateMediaSessionState if session exists)
+            loadPrefs()
+            
+            acquireWakeLock()
+            buildAudioFocusRequest()
+            
+            Log.d("HiCarService", "Service onCreate finished successfully")
+        } catch (e: Exception) {
+            Log.e("HiCarService", "CRITICAL ERROR in onCreate: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
 
     private fun loadPrefs() {
+        val regularPrefs = applicationContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val storageContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             applicationContext.createDeviceProtectedStorageContext()
         } else {
             applicationContext
         }
+        val protectedPrefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         
-        val prefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        // Priority: Regular prefs (latest from UI) -> Protected prefs (boot sequence)
+        val prefs = if (regularPrefs.all.isNotEmpty()) regularPrefs else protectedPrefs
+        
         connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
         targetDeviceAddress = prefs.getString("flutter.target_device_address", "") ?: ""
         
-        val delayVal = prefs.all["flutter.delay_seconds"]
+        val allPrefs = prefs.all
+        val delayVal = allPrefs["flutter.delay_seconds"]
         delaySeconds = when (delayVal) {
             is Long -> delayVal.toInt()
             is Int -> delayVal
@@ -90,24 +112,44 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             else -> 5
         }
         
+        autoPlayEnabled = prefs.getBoolean("flutter.auto_play_enabled", true)
+        
         greetingAudioPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
         goodbyeAudioPath = prefs.getString("flutter.goodbye_audio_path", "") ?: ""
 
-        // 🟢 ƯU TIÊN: Nếu đang trong trạng thái khóa (Boot), dùng file trong vùng an toàn
-        val bootGreeting = File(storageContext.filesDir, "boot_greeting.mp3")
-        if (bootGreeting.exists()) {
-            greetingAudioPath = bootGreeting.absolutePath
+        // 🟢 ƯU TIÊN: Chỉ dùng file Boot nếu chưa có thiết lập nhạc chính thức
+        if (greetingAudioPath.isEmpty()) {
+            val bootGreeting = File(storageContext.filesDir, "boot_greeting.mp3")
+            if (bootGreeting.exists()) {
+                greetingAudioPath = bootGreeting.absolutePath
+            }
         }
         
-        val bootGoodbye = File(storageContext.filesDir, "boot_goodbye.mp3")
-        if (bootGoodbye.exists()) {
-            goodbyeAudioPath = bootGoodbye.absolutePath
+        if (goodbyeAudioPath.isEmpty()) {
+            val bootGoodbye = File(storageContext.filesDir, "boot_goodbye.mp3")
+            if (bootGoodbye.exists()) {
+                goodbyeAudioPath = bootGoodbye.absolutePath
+            }
         }
+
+        // 🟢 CẬP NHẬT TRẠNG THÁI MEDIA SESSION: Nếu không phải mode AA, ngắt kết nối với màn hình xe
+        updateMediaSessionState()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        loadPrefs()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        val action = intent?.action ?: "NONE"
+        Log.d("HiCarService", "onStartCommand: action=$action")
+        
+        try {
+            loadPrefs()
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (e: Exception) {
+            Log.e("HiCarService", "Error in onStartCommand: ${e.message}")
+            // Even if it fails, we must call startForeground on Android 8+ to avoid ANR/Crash
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            } catch (e2: Exception) {}
+        }
 
         when (intent?.action) {
             ACTION_START -> { /* Keep alive */ }
@@ -165,16 +207,25 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         clientPackageName: String,
         clientUid: Int,
         rootHints: Bundle?
-    ): BrowserRoot {
+    ): BrowserRoot? {
         loadPrefs()
-        if (connectionMode == "phone_android_auto" && clientPackageName.contains("gearhead")) {
-            // 🟢 THÊM ĐỘ TRỄ: Android Auto cần thời gian để thiết lập kênh âm thanh Bluetooth (A2DP)
-            // Nếu phát ngay lập tức, âm thanh có thể bị mất hoặc phát ra loa điện thoại
+        Log.d("HiCarAA", "onGetRoot called by: $clientPackageName")
+        
+        // 🟢 ẨN APP KHỎI MÀN HÌNH XE NẾU KHÔNG PHẢI MODE ANDROID AUTO
+        if (connectionMode != "phone_android_auto") {
+            Log.d("HiCarAA", "Not in AA mode, returning null")
+            return null
+        }
+
+        // Nếu là Android Auto (gearhead), tự động kích hoạt phát nhạc mà ko cần check Bluetooth Target
+        if (clientPackageName.contains("gearhead") || clientPackageName.contains("com.google.android.projection.gearhead")) {
+            Log.d("HiCarAA", "Android Auto detected, scheduling audio (5s delay for stability)...")
             handler.postDelayed({
                 if (greetingAudioPath.isNotEmpty()) {
+                    Log.d("HiCarAA", "Playing greeting: $greetingAudioPath")
                     playAudio(greetingAudioPath, "greeting")
                 }
-            }, 3000) 
+            }, 5000) // 🟢 Tăng lên 5 giây để đợi hệ thống xe ổn định hoàn toàn
         }
         return BrowserRoot("hicar_root", null)
     }
@@ -211,11 +262,15 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         val granted = requestAudioFocus()
         if (!granted) return
 
-        stopPlayback(releaseOnly = true)
-
         try {
-            mediaPlayer = MediaPlayer().apply {
-                // 🟢 ĐỔI SANG CONTENT_TYPE_MUSIC: Để tránh DSP của xe xử lý lọc nhiễu nhầm (gây rè)
+            // Re-use or reset MediaPlayer to avoid rapid recreation stuttering
+            if (mediaPlayer == null) {
+                mediaPlayer = MediaPlayer()
+            } else {
+                mediaPlayer?.reset()
+            }
+            
+            mediaPlayer?.apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -223,28 +278,37 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                         .build()
                 )
                 setDataSource(path)
-                setVolume(1.0f, 1.0f) // Đảm bảo âm lượng nguồn tối đa
+                setVolume(1.0f, 1.0f)
                 prepare()
                 start()
+                
+                // 🟢 SYNCED STATE: Update playback state only after successful start
+                if (type == "greeting") {
+                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                } else if (type == "goodbye") {
+                    updatePlaybackState(PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) 
+                }
+
+                // Notify Flutter to pulse UI
+                HiCarPlugin.instance?.invokeServiceMethod("onPlaybackStarted", type)
+
                 setOnCompletionListener {
-                    // Update state FIRST so Flutter knows we are done before resources are gone
                     updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
                     releaseAudioFocus()
-                    reset()
-                    release()
+                    mediaPlayer?.release()
                     mediaPlayer = null
                 }
+                
                 setOnErrorListener { _, _, _ ->
                     releaseAudioFocus()
-                    false
+                    updatePlaybackState(PlaybackStateCompat.STATE_ERROR)
+                    true
                 }
             }
-            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-            
-            // 🟢 THÔNG BÁO FLUTTER: Để UI cập nhật trạng thái đang phát (Pulsing animation)
-            HiCarPlugin.instance?.invokeServiceMethod("onPlaybackStarted", type)
         } catch (e: Exception) {
+            Log.e("HiCarAudio", "Error playing audio: ${e.message}")
             releaseAudioFocus()
+            updatePlaybackState(PlaybackStateCompat.STATE_ERROR)
         }
     }
 
@@ -280,10 +344,27 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                         .build()
                 )
                 .setOnAudioFocusChangeListener { change ->
-                    if (change == AudioManager.AUDIOFOCUS_LOSS ||
-                        change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
-                    ) {
-                        stopPlayback()
+                    when (change) {
+                        AudioManager.AUDIOFOCUS_LOSS -> {
+                            Log.d("HiCarAudio", "Focus Loss (-1)")
+                            if (connectionMode == "phone_android_auto" && mediaPlayer?.isPlaying == true) {
+                                // 🟢 Nếu là AA và đang phát mà bị mất focus -> Thử phát lại sau 2.5s (cho ổn định)
+                                Log.d("HiCarAudio", "AA Focus Loss: Will retry in 2.5s...")
+                                handler.postDelayed({
+                                    if (greetingAudioPath.isNotEmpty()) playAudio(greetingAudioPath, "greeting")
+                                }, 2500)
+                            } else {
+                                stopPlayback()
+                            }
+                        }
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                            Log.d("HiCarAudio", "Focus Loss Transient (-2)")
+                            mediaPlayer?.pause()
+                        }
+                        AudioManager.AUDIOFOCUS_GAIN -> {
+                            Log.d("HiCarAudio", "Focus Gain (1)")
+                            mediaPlayer?.start()
+                        }
                     }
                 }
                 .build()
@@ -325,9 +406,17 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 override fun onPause() { stopPlayback() }
                 override fun onStop() { stopPlayback() }
             })
-            isActive = true
         }
+        // 🟢 QUAN TRỌNG: Chỉ set sessionToken 1 lần duy nhất trong vòng đời Service
         sessionToken = mediaSession?.sessionToken
+        updateMediaSessionState()
+    }
+
+    private fun updateMediaSessionState() {
+        mediaSession?.let { session ->
+            // Chỉ chỉnh trạng thái Active thay vì thay đổi Token (tránh lỗi crash)
+            session.isActive = (connectionMode == "phone_android_auto")
+        }
     }
 
     private fun updatePlaybackState(state: Int) {
@@ -342,10 +431,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         // Notify Flutter when playback completes via Plugin
         if (state == PlaybackStateCompat.STATE_STOPPED) {
-            // Tăng độ trễ lên 1000ms (1 giây) để đảm bảo đồng bộ tuyệt đối
-            handler.postDelayed({
-                HiCarPlugin.instance?.invokeServiceMethod("onPlaybackComplete")
-            }, 1000)
+            // Loại bỏ độ trễ 1s để UI cập nhật tức thì, tránh bị nháy khi phát bản tiếp theo
+            HiCarPlugin.instance?.invokeServiceMethod("onPlaybackComplete")
         }
     }
 
@@ -364,8 +451,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 setSound(null, null)
                 enableVibration(false)
             }
-            getSystemService(NotificationManager::class.java)
-                ?.createNotificationChannel(channel)
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
         }
     }
 

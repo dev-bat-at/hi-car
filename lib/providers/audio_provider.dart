@@ -248,6 +248,13 @@ class AudioProvider extends ChangeNotifier {
       _isNativeGoodbyePlaying = false;
       notifyListeners();
 
+      // Add a small delay for non-box modes to ensure connection is stable and audio focus is granted
+      final prefs = await SharedPreferences.getInstance();
+      final mode = prefs.getString('connection_mode');
+      if (mode != 'android_box_mode') {
+        await Future.delayed(const Duration(milliseconds: 1500));
+      }
+
       await ServiceChannel.instance.playGreeting(audioPath: path);
       _startWatchdog(audio?.durationSeconds ?? 15);
 
@@ -290,6 +297,13 @@ class AudioProvider extends ChangeNotifier {
       _isNativeGoodbyePlaying = true;
       _isNativeGreetingPlaying = false;
       notifyListeners();
+
+      // Add a small delay for non-box modes to ensure connection is stable and audio focus is granted
+      final prefs = await SharedPreferences.getInstance();
+      final mode = prefs.getString('connection_mode');
+      if (mode != 'android_box_mode') {
+        await Future.delayed(const Duration(milliseconds: 1500));
+      }
 
       await ServiceChannel.instance.playGoodbye(audioPath: path);
       _startWatchdog(audio?.durationSeconds ?? 15);

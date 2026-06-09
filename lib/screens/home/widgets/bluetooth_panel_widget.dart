@@ -409,7 +409,7 @@ class _DeviceItem extends StatelessWidget {
       trailingWidget = Container(
         padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
         decoration: BoxDecoration(
-          color: AppColors.success,
+          color: AppColors.error.withOpacity(0.8),
           borderRadius: BorderRadius.circular(8.r),
         ),
         child: Text(
@@ -427,16 +427,16 @@ class _DeviceItem extends StatelessWidget {
       trailingWidget = Container(
         padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
         decoration: BoxDecoration(
-          color: AppColors.cardElevated,
+          color: AppColors.primary.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8.r),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
         ),
         child: Text(
           'Kết nối',
           style: TextStyle(
-            color: AppColors.textSecondary,
+            color: AppColors.primary,
             fontSize: 10.sp,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.bold,
           ),
         ),
       );

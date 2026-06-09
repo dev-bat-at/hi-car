@@ -13,6 +13,7 @@ class BluetoothProvider extends ChangeNotifier {
   List<BluetoothDeviceModel> _scannedDevices = [];
   bool _isScanning = false;
   final Map<String, bool> _connectingDevices = {};
+  Future<bool> Function()? onTargetConnected;
 
   List<BluetoothDeviceModel> get pairedDevices => _pairedDevices;
   BluetoothDeviceModel? get targetDevice => _targetDevice;
@@ -28,17 +29,30 @@ class BluetoothProvider extends ChangeNotifier {
 
   Future<void> init() async {
     BluetoothChannel.instance.init();
-    await _loadSavedTarget();
-    await loadPairedDevices();
 
-    // Register listener for native connection status updates
+    // Register listener for native connection status updates (Set early to avoid missing events)
     BluetoothChannel.instance
         .setConnectionChangeHandler((address, action) async {
       await loadPairedDevices();
+
+      // If a device just connected and it matches our target, trigger autoplay if in foreground
+      debugPrint(
+          'BT Handler: action=$action, incoming=$address, target=${_targetDevice?.address}');
+      if (action == 'connected' &&
+          _targetDevice?.address.toLowerCase() == address.toLowerCase()) {
+        debugPrint('BT Handler: MATCH FOUND, triggering greeting...');
+        if (onTargetConnected != null) {
+          await onTargetConnected!();
+        }
+      }
     });
+
+    await _loadSavedTarget();
+    await loadPairedDevices();
 
     BluetoothChannel.instance.setDiscoveryHandler((raw) async {
       final device = BluetoothDeviceModel.fromMap(raw);
+      debugPrint('Found Bluetooth device: ${device.name} (${device.address})');
       // Check if already in scanned or paired list
       if (!_pairedDevices.any((d) => d.address == device.address) &&
           !_scannedDevices.any((d) => d.address == device.address)) {
@@ -110,14 +124,20 @@ class BluetoothProvider extends ChangeNotifier {
     try {
       if (device.isConnected) {
         await BluetoothChannel.instance.disconnectDevice(address);
+        // Optimistically update to disconnected
+        _pairedDevices = _pairedDevices
+            .map((d) =>
+                d.address == address ? d.copyWith(isConnected: false) : d)
+            .toList();
+        notifyListeners();
       } else {
         // Automatically mark as target device when attempting connection
         await setTargetDevice(device);
         await BluetoothChannel.instance.connectDevice(address);
       }
 
-      // Let it process for a bit, then refresh paired list status
-      await Future.delayed(const Duration(milliseconds: 1000));
+      // Refresh list to sync with native reality
+      await Future.delayed(const Duration(milliseconds: 2000));
       await loadPairedDevices();
     } catch (_) {
     } finally {

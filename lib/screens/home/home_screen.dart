@@ -44,7 +44,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _checkAll();
       final settings = context.read<SettingsProvider>();
       final audioProvider = context.read<AudioProvider>();
-      if (settings.connectionMode == 'android_screen_box' &&
+      if (settings.connectionMode == 'android_box_mode' &&
           settings.autoPlayEnabled) {
         audioProvider.playGreetingViaNative();
       }

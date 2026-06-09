@@ -250,7 +250,6 @@ class _ConnectionModeScreenState extends State<ConnectionModeScreen> {
     if (_selectedMode != null) {
       final settings = context.read<SettingsProvider>();
       await settings.setConnectionMode(_selectedMode!);
-      await settings.commitSettings();
     }
 
     if (!context.mounted) return;

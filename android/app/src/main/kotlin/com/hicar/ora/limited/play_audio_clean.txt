@@ -1,0 +1,55 @@
+    private fun playAudio(path: String, type: String) {
+        if (path.isEmpty()) return
+
+        val granted = requestAudioFocus()
+        if (!granted) return
+
+        try {
+            // Re-use or reset MediaPlayer to avoid rapid recreation stuttering
+            if (mediaPlayer == null) {
+                mediaPlayer = MediaPlayer()
+            } else {
+                mediaPlayer?.reset()
+            }
+            
+            mediaPlayer?.apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC) 
+                        .build()
+                )
+                setDataSource(path)
+                setVolume(1.0f, 1.0f)
+                prepare()
+                start()
+                
+                // 🟢 SYNCED STATE: Update playback state only after successful start
+                if (type == "greeting") {
+                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                } else if (type == "goodbye") {
+                    updatePlaybackState(PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) 
+                }
+
+                // Notify Flutter to pulse UI
+                HiCarPlugin.instance?.invokeServiceMethod("onPlaybackStarted", type)
+
+                setOnCompletionListener {
+                    updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
+                    releaseAudioFocus()
+                    mediaPlayer?.release()
+                    mediaPlayer = null
+                }
+                
+                setOnErrorListener { _, _, _ ->
+                    releaseAudioFocus()
+                    updatePlaybackState(PlaybackStateCompat.STATE_ERROR)
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("HiCarAudio", "Error playing audio: ${e.message}")
+            releaseAudioFocus()
+            updatePlaybackState(PlaybackStateCompat.STATE_ERROR)
+        }
+    }

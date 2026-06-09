@@ -60,6 +60,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AudioProvider _audioProvider;
   late final OverlayProvider _overlayProvider;
   late final SettingsProvider _settingsProvider;
+  late final BluetoothProvider _bluetoothProvider;
 
   @override
   void initState() {
@@ -67,6 +68,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _audioProvider = AudioProvider()..init();
     _overlayProvider = OverlayProvider()..init();
     _settingsProvider = SettingsProvider()..init();
+    _bluetoothProvider = BluetoothProvider()..init();
+
+    // 🟢 Chế độ Bluetooth: Khi vừa kết nối thành công thì phát nhạc (nếu app đang mở)
+    _bluetoothProvider.onTargetConnected = () async {
+      if ((_settingsProvider.connectionMode == 'phone_bluetooth' ||
+              _settingsProvider.connectionMode == 'phone_android_auto') &&
+          _settingsProvider.autoPlayEnabled) {
+        debugPrint('Main: Target Bluetooth connected, triggering greeting...');
+        return await _audioProvider.playGreetingViaNative();
+      }
+      return false;
+    };
 
     // Listen to audio provider to sync state to overlay
     _audioProvider.addListener(_updateOverlayState);
@@ -162,20 +175,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   /// Bring the app to the foreground.
-  ///
-  /// The native `triggerOpenApp` launches the main Activity with
-  /// FLAG_ACTIVITY_NEW_TASK | CLEAR_TOP | SINGLE_TOP.
-  ///
-  /// With `shouldDestroyEngineWithHost() = false` in MainActivity,
-  /// the FlutterEngine (and its MethodChannels) survive Activity
-  /// destruction, so the service channel should always be available.
   Future<void> _openAppDirect() async {
-    // Close overlay so it doesn't stay on top
     try {
       await _overlayProvider.hideOverlay();
     } catch (_) {}
 
-    // Try available channels to launch the Activity
     for (final channelName in [
       AppConstants.serviceChannel,
       AppConstants.bluetoothChannel,
@@ -192,9 +196,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     }
 
-    // Ultimate fallback: re-init ServiceChannel and try once more
-    debugPrint(
-        'Main: All channels unavailable, re-initializing ServiceChannel');
     try {
       ServiceChannel.instance.init();
       await ServiceChannel.instance.openApp();
@@ -233,11 +234,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _initPlayOnOpen() async {
     if (_hasTriggeredOpenGreeting) return;
 
-    // Đợi Settings load xong
     await Future.delayed(const Duration(milliseconds: 1000));
 
     if (_settingsProvider.playOnOpen) {
-      // Đợi thêm cho AudioProvider load xong danh sách nhạc từ local/server
       int retryCount = 0;
       while (_audioProvider.audioList.isEmpty && retryCount < 10) {
         debugPrint('Main: Audio list empty, waiting... ($retryCount)');
@@ -261,10 +260,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => _audioProvider),
-        ChangeNotifierProvider(create: (_) => BluetoothProvider()..init()),
-        ChangeNotifierProvider(create: (_) => _overlayProvider),
-        ChangeNotifierProvider(create: (_) => _settingsProvider),
+        ChangeNotifierProvider.value(value: _audioProvider),
+        ChangeNotifierProvider.value(value: _bluetoothProvider),
+        ChangeNotifierProvider.value(value: _overlayProvider),
+        ChangeNotifierProvider.value(value: _settingsProvider),
         ChangeNotifierProvider(
             create: (_) => PermissionProvider()..checkAllPermissions()),
       ],

@@ -108,6 +108,7 @@ class PermissionProvider extends ChangeNotifier {
       Permission.bluetooth,
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
     ].request();
 
     final allGranted = result.values.every((s) => s.isGranted);
@@ -149,6 +150,7 @@ class PermissionProvider extends ChangeNotifier {
         Permission.bluetooth,
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
         Permission.notification,
       ].request();
       if (!_status.overlay) {
@@ -159,7 +161,7 @@ class PermissionProvider extends ChangeNotifier {
       if (!_status.overlay) {
         await FlutterOverlayWindow.requestPermission();
       }
-    } else if (mode == 'android_screen_box') {
+    } else if (mode == 'android_box_mode') {
       await Permission.notification.request();
       await Permission.ignoreBatteryOptimizations.request();
       if (!_status.overlay) {

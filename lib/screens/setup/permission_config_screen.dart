@@ -49,7 +49,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
     final status = permissionProvider.status;
     final activeMode = settingsProvider.pendingConnectionMode ??
         settingsProvider.connectionMode;
-    final isBoxMode = activeMode == 'android_screen_box';
+    final isBoxMode = activeMode == 'android_box_mode';
     final isXiaomi = permissionProvider.isXiaomi;
 
     return Scaffold(
