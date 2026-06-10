@@ -74,9 +74,15 @@
         <service
             android:name="com.hicar.ora.limited.AudioForegroundService"
             android:exported="true"
-            android:foregroundServiceType="mediaPlayback"
+            android:foregroundServiceType="mediaPlayback|specialUse"
             android:directBootAware="true"
             android:stopWithTask="false">
+            <!-- specialUse: cho phép khởi động service từ BOOT_COMPLETED trên Android 15
+                 (mediaPlayback bị cấm start từ boot ở API 35). Luồng thường + Android Auto
+                 vẫn dùng mediaPlayback nên không ảnh hưởng. -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Automotive greeting audio playback at device boot" />
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>

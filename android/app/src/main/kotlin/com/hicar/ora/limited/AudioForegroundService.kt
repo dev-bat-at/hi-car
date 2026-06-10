@@ -3,6 +3,7 @@ package com.hicar.ora.limited
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.*
 import android.os.*
 import android.support.v4.media.MediaBrowserCompat
@@ -41,6 +42,10 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         const val NOTIFICATION_CHANNEL_ID = "hicar_service_channel"
         const val NOTIFICATION_ID = 1001
+
+        // Retry xin audio focus khi boot/màn hình khóa trước khi phát best-effort.
+        private const val MAX_FOCUS_ATTEMPTS = 4
+        private const val FOCUS_RETRY_MS = 2500L
 
         @Volatile var connectionMode: String = "phone_bluetooth"
         @Volatile var targetDeviceAddress: String = ""
@@ -89,16 +94,32 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
 
     private fun loadPrefs() {
-        val regularPrefs = applicationContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        // ⚠️ Direct Boot: trước khi user unlock, vùng credential-encrypted không truy cập được
+        //    (gọi getSharedPreferences cũng ném IllegalStateException). Ưu tiên device-protected
+        //    khi chưa unlock; chỉ đọc credential storage (dữ liệu mới nhất từ UI) khi đã unlock.
         val storageContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             applicationContext.createDeviceProtectedStorageContext()
         } else {
             applicationContext
         }
         val protectedPrefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        
-        // Priority: Regular prefs (latest from UI) -> Protected prefs (boot sequence)
-        val prefs = if (regularPrefs.all.isNotEmpty()) regularPrefs else protectedPrefs
+
+        val userUnlocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            (getSystemService(Context.USER_SERVICE) as? UserManager)?.isUserUnlocked ?: false
+        } else {
+            true
+        }
+
+        // Priority: Regular prefs (latest from UI, nếu đã unlock) -> Protected prefs (boot sequence)
+        var prefs = protectedPrefs
+        if (userUnlocked) {
+            try {
+                val regularPrefs = applicationContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                if (regularPrefs.all.isNotEmpty()) prefs = regularPrefs
+            } catch (e: Exception) {
+                Log.w("HiCarService", "loadPrefs: credential storage không đọc được – ${e.message}")
+            }
+        }
         
         connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
         targetDeviceAddress = prefs.getString("flutter.target_device_address", "") ?: ""
@@ -138,16 +159,25 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: "NONE"
         Log.d("HiCarService", "onStartCommand: action=$action")
-        
+
+        // 🟢 Android 15 (API 35) CẤM start FGS type mediaPlayback từ BOOT_COMPLETED.
+        //    → Khi service được khởi động từ luồng BOOT (ACTION_PLAY_GREETING_DELAYED do
+        //      BootReceiver gửi), ta lên foreground bằng type specialUse (được phép từ boot).
+        //    → Mọi luồng còn lại (app mở, Android Auto, Bluetooth...) vẫn dùng mediaPlayback
+        //      như cũ để KHÔNG ảnh hưởng tới Android Auto đang hoạt động tốt.
+        val fromBoot = action == ACTION_PLAY_GREETING_DELAYED
+
         try {
             loadPrefs()
-            startForeground(NOTIFICATION_ID, buildNotification())
+            startForegroundCompat(fromBoot)
         } catch (e: Exception) {
             Log.e("HiCarService", "Error in onStartCommand: ${e.message}")
             // Even if it fails, we must call startForeground on Android 8+ to avoid ANR/Crash
             try {
-                startForeground(NOTIFICATION_ID, buildNotification())
-            } catch (e2: Exception) {}
+                startForegroundCompat(fromBoot)
+            } catch (e2: Exception) {
+                Log.e("HiCarService", "startForeground retry failed: ${e2.message}")
+            }
         }
 
         when (intent?.action) {
@@ -178,6 +208,22 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         }
 
         return START_STICKY
+    }
+
+    /**
+     * Lên foreground với FGS type phù hợp ngữ cảnh.
+     * - fromBoot=true  → FOREGROUND_SERVICE_TYPE_SPECIAL_USE (được phép start từ BOOT_COMPLETED).
+     * - fromBoot=false → FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK (giữ nguyên cho app/Android Auto).
+     */
+    private fun startForegroundCompat(fromBoot: Boolean) {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val type = if (fromBoot) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                       else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            startForeground(NOTIFICATION_ID, notification, type)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun getBootAudioPath(fileName: String): String? {
@@ -286,8 +332,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         delayedRunnable = null
     }
 
-    private fun playAudio(path: String, type: String) {
-        Log.d("HiCarAudio", "playAudio called: type=$type, path=$path")
+    private fun playAudio(path: String, type: String, focusAttempt: Int = 0) {
+        if (focusAttempt == 0) Log.d("HiCarAudio", "playAudio called: type=$type, path=$path")
         if (path.isEmpty()) {
             Log.w("HiCarAudio", "playAudio: path is EMPTY – nothing to play")
             return
@@ -298,19 +344,23 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         }
 
         val granted = requestAudioFocus()
-        Log.d("HiCarAudio", "playAudio: audioFocus granted=$granted")
-        if (!granted) {
-            // Retry once after 2 seconds – audio subsystem may still be initializing at boot
-            Log.w("HiCarAudio", "playAudio: focus not granted, retrying in 2s...")
-            handler.postDelayed({
-                val granted2 = requestAudioFocus()
-                Log.d("HiCarAudio", "playAudio retry: focus granted=$granted2")
-                if (granted2) doPlayAudio(path, type)
-                else Log.e("HiCarAudio", "playAudio: focus retry FAILED, giving up")
-            }, 2000)
+        Log.d("HiCarAudio", "playAudio: audioFocus granted=$granted (attempt=$focusAttempt)")
+        if (granted) {
+            doPlayAudio(path, type)
             return
         }
-        doPlayAudio(path, type)
+
+        // 🟢 Khi boot/màn hình khóa, hệ thống (đặc biệt MIUI) thường TỪ CHỐI cấp audio focus
+        //    cho tới khi unlock hoặc audio system sẵn sàng. Retry nhiều lần; nếu vẫn không được
+        //    thì PHÁT BEST-EFFORT (greeting xe hơi là âm thanh chính, phát đè là chấp nhận được)
+        //    để đảm bảo nhạc vẫn vang khi khởi động.
+        if (focusAttempt < MAX_FOCUS_ATTEMPTS) {
+            Log.w("HiCarAudio", "playAudio: focus denied, retry ${focusAttempt + 1}/$MAX_FOCUS_ATTEMPTS in ${FOCUS_RETRY_MS}ms...")
+            handler.postDelayed({ playAudio(path, type, focusAttempt + 1) }, FOCUS_RETRY_MS)
+        } else {
+            Log.w("HiCarAudio", "playAudio: focus vẫn bị từ chối sau $MAX_FOCUS_ATTEMPTS lần → phát best-effort (không focus)")
+            doPlayAudio(path, type)
+        }
     }
 
     private fun doPlayAudio(path: String, type: String) {
@@ -510,7 +560,15 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     }
 
     private fun buildNotification(): Notification {
+        // ⚠️ Direct Boot (trước khi unlock): getLaunchIntentForPackage() trả về null vì
+        //    PackageManager chưa resolve được launcher activity cho user đang khóa. Khi đó
+        //    PendingIntent bọc Intent null → startForeground ném NPE (Intent.resolveTypeIfNeeded).
+        //    → Dùng Intent tường minh tới MainActivity làm fallback để luôn có Intent hợp lệ.
         val launchIntent = packageManager?.getLaunchIntentForPackage(packageName)
+            ?: Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_MAIN
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
         val pendingIntent = PendingIntent.getActivity(
             this, 0, launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

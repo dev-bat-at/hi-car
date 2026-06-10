@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Build
+import android.os.UserManager
 import java.io.File
 
 /**
@@ -60,15 +61,34 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     private fun getAvailablePrefs(context: Context): SharedPreferences {
-        val regularPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val protectedPrefs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        // ⚠️ Direct Boot: trước khi user unlock lần đầu, vùng credential-encrypted KHÔNG truy cập
+        //    được — chỉ cần GỌI getSharedPreferences trên context thường cũng ném
+        //    IllegalStateException và làm CRASH receiver. Vì vậy phải kiểm tra trạng thái unlock
+        //    và ưu tiên vùng device-protected khi chưa unlock.
+        val deviceContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             context.createDeviceProtectedStorageContext()
-                .getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         } else {
-            regularPrefs
+            context
+        }
+        val protectedPrefs = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+
+        val userUnlocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            (context.getSystemService(Context.USER_SERVICE) as? UserManager)?.isUserUnlocked ?: false
+        } else {
+            true
         }
 
-        return if (regularPrefs.all.isNotEmpty()) regularPrefs else protectedPrefs
+        // Chỉ chạm vào credential storage khi đã unlock (để lấy dữ liệu mới nhất từ UI).
+        if (userUnlocked) {
+            try {
+                val regularPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                if (regularPrefs.all.isNotEmpty()) return regularPrefs
+            } catch (e: Exception) {
+                android.util.Log.w("HiCarBoot", "getAvailablePrefs: credential storage không đọc được – ${e.message}")
+            }
+        }
+
+        return protectedPrefs
     }
 
     private fun hasGreetingAudio(context: Context, prefs: SharedPreferences): Boolean {
