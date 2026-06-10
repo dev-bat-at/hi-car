@@ -35,12 +35,17 @@ class ServiceChannel {
       await _channel.invokeMethod('startService');
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: startService error: $e');
-      AppLogger.instance
-          .log('Lỗi Native startService: ${e.message}', type: 'native_error');
+      AppLogger.instance.log(
+        'Native startService lỗi: ${e.message}',
+        type: 'native_error',
+        details: {'code': e.code, 'details': e.details?.toString()},
+      );
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: startService missing plugin: $e');
-      AppLogger.instance
-          .log('Lỗi Native: Chưa cài đặt plugin Service', type: 'native_error');
+      AppLogger.instance.log(
+        'Plugin Service chưa đăng ký (startService): $e',
+        type: 'native_error',
+      );
     }
   }
 
@@ -49,8 +54,11 @@ class ServiceChannel {
       await _channel.invokeMethod('stopService');
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: stopService error: $e');
-      AppLogger.instance
-          .log('Lỗi Native stopService: ${e.message}', type: 'native_error');
+      AppLogger.instance.log(
+        'Native stopService lỗi: ${e.message}',
+        type: 'native_error',
+        details: {'code': e.code},
+      );
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: stopService missing plugin: $e');
     }
@@ -61,10 +69,17 @@ class ServiceChannel {
       await _channel.invokeMethod('playGreeting', {'audioPath': audioPath});
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: playGreeting error: $e');
-      AppLogger.instance
-          .log('Lỗi Native playGreeting: ${e.message}', type: 'native_error');
+      AppLogger.instance.log(
+        'Native playGreeting lỗi: ${e.message}',
+        type: 'native_error',
+        details: {'code': e.code, 'audioPath': audioPath},
+      );
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: playGreeting missing plugin: $e');
+      AppLogger.instance.log(
+        'Plugin Service chưa đăng ký (playGreeting): $e',
+        type: 'native_error',
+      );
     }
   }
 
@@ -73,10 +88,17 @@ class ServiceChannel {
       await _channel.invokeMethod('playGoodbye', {'audioPath': audioPath});
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: playGoodbye error: $e');
-      AppLogger.instance
-          .log('Lỗi Native playGoodbye: ${e.message}', type: 'native_error');
+      AppLogger.instance.log(
+        'Native playGoodbye lỗi: ${e.message}',
+        type: 'native_error',
+        details: {'code': e.code, 'audioPath': audioPath},
+      );
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: playGoodbye missing plugin: $e');
+      AppLogger.instance.log(
+        'Plugin Service chưa đăng ký (playGoodbye): $e',
+        type: 'native_error',
+      );
     }
   }
 
@@ -85,8 +107,11 @@ class ServiceChannel {
       await _channel.invokeMethod('stopAudio');
     } on PlatformException catch (e) {
       debugPrint('ServiceChannel: stopAudio error: $e');
-      AppLogger.instance
-          .log('Lỗi Native stopAudio: ${e.message}', type: 'native_error');
+      AppLogger.instance.log(
+        'Native stopAudio lỗi: ${e.message}',
+        type: 'native_error',
+        details: {'code': e.code},
+      );
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: stopAudio missing plugin: $e');
     }
@@ -121,9 +146,25 @@ class ServiceChannel {
   Future<void> syncPrefs() async {
     try {
       await _channel.invokeMethod('syncPrefs');
-    } catch (e) {
+    } on PlatformException catch (e) {
       debugPrint('ServiceChannel: syncPrefs error: $e');
-      AppLogger.instance.log('Lỗi Native syncPrefs: $e', type: 'native_error');
+      AppLogger.instance.log(
+        'Native syncPrefs lỗi: ${e.message}',
+        type: 'native_error',
+        details: {'code': e.code, 'details': e.details?.toString()},
+      );
+    } on MissingPluginException catch (e) {
+      debugPrint('ServiceChannel: syncPrefs missing plugin: $e');
+      AppLogger.instance.log(
+        'Plugin Service chưa đăng ký (syncPrefs): $e',
+        type: 'native_error',
+      );
+    } catch (e) {
+      debugPrint('ServiceChannel: syncPrefs unknown error: $e');
+      AppLogger.instance.log(
+        'syncPrefs lỗi không xác định: $e',
+        type: 'native_error',
+      );
     }
   }
 }

@@ -7,19 +7,42 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 
 /**
- * HiCarPlugin - Handle all native communications (Service & Bluetooth) 
- * across any Flutter Engine (Main App or Overlay).
+ * HiCarPlugin — custom native plugin.
+ *
+ * Dùng FlutterPlugin interface chuẩn + đăng ký trong GeneratedPluginRegistrant
+ * để đảm bảo được re-register đúng thời điểm khi Dart VM khởi động.
+ *
+ * Không clear handler trong onDetachedFromEngine vì engine được cache.
  */
 class HiCarPlugin : FlutterPlugin, MethodCallHandler {
+
     companion object {
         @Volatile
         var instance: HiCarPlugin? = null
+
+        const val SERVICE_CHANNEL   = "com.hicar.ora.limited/service"
+        const val BLUETOOTH_CHANNEL = "com.hicar.ora.limited/bluetooth"
+
+        /**
+         * Đăng ký channels TRỰC TIẾP trên messenger của 1 engine cụ thể.
+         * Gọi từ MainActivity.configureFlutterEngine với dartExecutor của engine HIỂN THỊ
+         * → đảm bảo cả 2 chiều (Flutter→Native và Native→Flutter) đều dùng đúng messenger,
+         *   KHÔNG phụ thuộc GeneratedPluginRegistrant (file tự sinh) hay thứ tự attach của
+         *   các engine phụ (overlay, audio_service).
+         */
+        fun registerWith(messenger: BinaryMessenger, appContext: Context): HiCarPlugin {
+            val plugin = instance ?: HiCarPlugin()
+            plugin.attach(messenger, appContext)
+            instance = plugin
+            return plugin
+        }
     }
 
     private lateinit var serviceChannel: MethodChannel
@@ -27,32 +50,41 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var context: Context
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        instance = this
-        context = binding.applicationContext
-        
-        // Register Service Channel
-        serviceChannel = MethodChannel(binding.binaryMessenger, "com.hicar.ora.limited/service")
+    /** (Re)tạo channels + handlers trên messenger được cung cấp. Idempotent. */
+    fun attach(messenger: BinaryMessenger, appContext: Context) {
+        context = appContext
+        serviceChannel   = MethodChannel(messenger, SERVICE_CHANNEL)
+        bluetoothChannel = MethodChannel(messenger, BLUETOOTH_CHANNEL)
         serviceChannel.setMethodCallHandler(this)
-        
-        // Register Bluetooth Channel
-        bluetoothChannel = MethodChannel(binding.binaryMessenger, "com.hicar.ora.limited/bluetooth")
-        bluetoothChannel.setMethodCallHandler { call, result ->
-            handleBluetoothCall(call, result)
+        bluetoothChannel.setMethodCallHandler { call, result -> handleBluetoothCall(call, result) }
+        android.util.Log.i(
+            "HiCarPlugin",
+            "attach ✓ messenger#${System.identityHashCode(messenger)} plugin#${System.identityHashCode(this)}"
+        )
+    }
+
+    // ── FlutterPlugin lifecycle ────────────────────────────────────────────────
+
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        android.util.Log.i(
+            "HiCarPlugin",
+            "onAttachedToEngine (auto) messenger#${System.identityHashCode(binding.binaryMessenger)}"
+        )
+        // Không tự gán instance ở đây để tránh engine phụ (overlay/audio_service) ghi đè
+        // instance của engine hiển thị. Engine hiển thị đăng ký qua registerWith() trong
+        // MainActivity. Chỉ attach nếu chưa có instance nào (trường hợp hiếm).
+        if (instance == null) {
+            registerWith(binding.binaryMessenger, binding.applicationContext)
         }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        if (instance == this) {
-            instance = null
-        }
-        serviceChannel.setMethodCallHandler(null)
-        bluetoothChannel.setMethodCallHandler(null)
+        android.util.Log.d("HiCarPlugin", "onDetachedFromEngine — handlers kept alive")
+        // Không null handler: engine được cache và sẽ tái sử dụng.
     }
 
-    /**
-     * Helper to invoke methods on Service Channel from background threads
-     */
+    // ── Native → Flutter helpers ───────────────────────────────────────────────
+
     fun invokeServiceMethod(method: String, arguments: Any? = null) {
         mainHandler.post {
             try {
@@ -63,9 +95,6 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
-    /**
-     * Helper to invoke methods on Bluetooth Channel from background threads
-     */
     fun invokeBluetoothMethod(method: String, arguments: Any? = null) {
         mainHandler.post {
             try {
@@ -76,7 +105,10 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
+    // ── Flutter → Native ───────────────────────────────────────────────────────
+
     override fun onMethodCall(call: MethodCall, result: Result) {
+        android.util.Log.i("HiCarPlugin", "onMethodCall: ${call.method}")
         when (call.method) {
             "startService" -> {
                 startAudioService(AudioForegroundService.ACTION_START)
@@ -88,6 +120,7 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             }
             "playGreeting" -> {
                 val audioPath = call.argument<String>("audioPath") ?: ""
+                if (audioPath.isNotEmpty()) autoSyncBootFile(audioPath, "boot_greeting.mp3")
                 val intent = buildServiceIntent(AudioForegroundService.ACTION_PLAY_GREETING)
                 intent.putExtra("audioPath", audioPath)
                 startServiceSafe(intent)
@@ -95,6 +128,7 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             }
             "playGoodbye" -> {
                 val audioPath = call.argument<String>("audioPath") ?: ""
+                if (audioPath.isNotEmpty()) autoSyncBootFile(audioPath, "boot_goodbye.mp3")
                 val intent = buildServiceIntent(AudioForegroundService.ACTION_PLAY_GOODBYE)
                 intent.putExtra("audioPath", audioPath)
                 startServiceSafe(intent)
@@ -114,111 +148,101 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             }
             "syncPrefs" -> {
                 syncPrefsToDeviceProtected()
-                syncFilesToDeviceProtected() // 🟢 Đồng bộ cả file âm thanh
+                syncFilesToDeviceProtected()
                 result.success(true)
             }
-            "openApp" -> {
-                openApp(result)
-            }
+            "openApp" -> openApp(result)
             else -> result.notImplemented()
         }
     }
 
-    /**
-     * Đồng bộ SharedPreferences sang vùng nhớ an toàn để có thể đọc được ngay khi khởi động (Direct Boot)
-     */
+    // ── Boot file sync ─────────────────────────────────────────────────────────
+
+    private fun autoSyncBootFile(sourcePath: String, destName: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        try {
+            val src = java.io.File(sourcePath)
+            if (!src.exists()) return
+            val destDir = context.createDeviceProtectedStorageContext().filesDir
+            val dest = java.io.File(destDir, destName)
+            if (dest.exists() && dest.length() == src.length()) return
+            src.copyTo(dest, overwrite = true)
+            android.util.Log.i("HiCarPlugin", "autoSyncBootFile: $destName updated (${dest.length()} bytes)")
+        } catch (e: Exception) {
+            android.util.Log.e("HiCarPlugin", "autoSyncBootFile: error – ${e.message}")
+        }
+    }
+
+    // ── SharedPreferences → Device Protected sync ─────────────────────────────
+
     private fun syncPrefsToDeviceProtected() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             val deviceContext = context.createDeviceProtectedStorageContext()
             val sourcePrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val destPrefs = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            
-            val allEntries = sourcePrefs.all
+            val destPrefs   = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val editor = destPrefs.edit()
-            for ((key, value) in allEntries) {
-                // Key trong Flutter SharedPreferences bắt đầu bằng "flutter."
+            for ((key, value) in sourcePrefs.all) {
                 when (value) {
-                    is String -> editor.putString(key, value)
+                    is String  -> editor.putString(key, value)
                     is Boolean -> editor.putBoolean(key, value)
-                    is Float -> editor.putFloat(key, value)
-                    is Int -> editor.putInt(key, value)
-                    is Long -> editor.putLong(key, value)
+                    is Float   -> editor.putFloat(key, value)
+                    is Int     -> editor.putInt(key, value)
+                    is Long    -> editor.putLong(key, value)
                 }
             }
-            editor.apply()
+            editor.commit()
         }
     }
 
-    /**
-     * Sao chép các file âm thanh đang được chọn sang vùng nhớ an toàn (Device Protected Storage)
-     * để có thể phát nhạc ngay khi máy khởi động (kể cả khi chưa mở khóa màn hình).
-     */
     private fun syncFilesToDeviceProtected() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
-
         val deviceContext = context.createDeviceProtectedStorageContext()
         val prefs = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        
         val greetingPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
-        val goodbyePath = prefs.getString("flutter.goodbye_audio_path", "") ?: ""
-
-        if (greetingPath.isNotEmpty()) {
-            copyFileToProtected(greetingPath, "boot_greeting.mp3")
-        }
-        if (goodbyePath.isNotEmpty()) {
-            copyFileToProtected(goodbyePath, "boot_goodbye.mp3")
-        }
+        val goodbyePath  = prefs.getString("flutter.goodbye_audio_path",  "") ?: ""
+        if (greetingPath.isNotEmpty()) copyFileToProtected(greetingPath, "boot_greeting.mp3", deviceContext)
+        if (goodbyePath.isNotEmpty())  copyFileToProtected(goodbyePath,  "boot_goodbye.mp3",  deviceContext)
+        val bg = java.io.File(deviceContext.filesDir, "boot_greeting.mp3")
+        android.util.Log.i("HiCarSync", "boot_greeting.mp3 exists=${bg.exists()}, size=${if (bg.exists()) bg.length() else 0} bytes")
     }
 
-    private fun copyFileToProtected(sourcePath: String, destName: String) {
+    private fun copyFileToProtected(sourcePath: String, destName: String, deviceContext: android.content.Context) {
         try {
-            val sourceFile = java.io.File(sourcePath)
-            if (!sourceFile.exists()) return
-
-            val deviceContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                context.createDeviceProtectedStorageContext()
-            } else {
-                context
-            }
-            
-            val destFile = java.io.File(deviceContext.filesDir, destName)
-            sourceFile.inputStream().use { input ->
-                destFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
+            val src = java.io.File(sourcePath)
+            if (!src.exists()) { android.util.Log.e("HiCarSync", "source NOT found: $sourcePath"); return }
+            val dest = java.io.File(deviceContext.filesDir, destName)
+            src.inputStream().use { i -> dest.outputStream().use { o -> i.copyTo(o) } }
+            android.util.Log.i("HiCarSync", "copyFileToProtected OK → ${dest.absolutePath} (${dest.length()} bytes)")
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("HiCarSync", "copyFileToProtected ERROR $destName – ${e.message}")
         }
     }
+
+    // ── App / Settings ─────────────────────────────────────────────────────────
 
     private fun showAutostartSettings() {
         val manufacturer = Build.MANUFACTURER.lowercase()
         val intent = Intent()
         try {
             when {
-                manufacturer.contains("xiaomi") -> {
+                manufacturer.contains("xiaomi") ->
                     intent.component = ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
-                }
-                manufacturer.contains("oppo") -> {
+                manufacturer.contains("oppo") ->
                     intent.component = ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")
-                }
-                manufacturer.contains("vivo") -> {
+                manufacturer.contains("vivo") ->
                     intent.component = ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
-                }
                 else -> {
                     intent.action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
-                    intent.data = android.net.Uri.fromParts("package", context.packageName, null)
+                    intent.data   = android.net.Uri.fromParts("package", context.packageName, null)
                 }
             }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         } catch (e: Exception) {
-            // Fallback to general settings
-            val fallbackIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            fallbackIntent.data = android.net.Uri.fromParts("package", context.packageName, null)
-            fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(fallbackIntent)
+            val fallback = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            fallback.data = android.net.Uri.fromParts("package", context.packageName, null)
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(fallback)
         }
     }
 
@@ -231,51 +255,25 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
 
     private fun handleBluetoothCall(call: MethodCall, result: Result) {
         when (call.method) {
-            "getPairedDevices" -> {
-                val devices = BluetoothReceiver.getPairedDevices(context)
-                result.success(devices)
-            }
+            "getPairedDevices" -> result.success(BluetoothReceiver.getPairedDevices(context))
             "setTargetDevice" -> {
-                val address = call.argument<String>("address") ?: ""
-                val delay = call.argument<Int>("delay") ?: 5
-                AudioForegroundService.targetDeviceAddress = address
-                AudioForegroundService.delaySeconds = delay
+                AudioForegroundService.targetDeviceAddress = call.argument<String>("address") ?: ""
+                AudioForegroundService.delaySeconds = call.argument<Int>("delay") ?: 5
                 result.success(true)
             }
-            "clearTargetDevice" -> {
-                AudioForegroundService.targetDeviceAddress = ""
-                result.success(true)
-            }
-            "connectDevice" -> {
-                val address = call.argument<String>("address") ?: ""
-                BluetoothReceiver.connectDevice(context, address) { success ->
-                   result.success(success)
-                }
-            }
-            "disconnectDevice" -> {
-                val address = call.argument<String>("address") ?: ""
-                BluetoothReceiver.disconnectDevice(context, address) { success ->
-                   result.success(success)
-                }
-            }
-            "startDiscovery" -> {
-                val success = BluetoothReceiver.startDiscovery(context)
-                result.success(success)
-            }
-            "stopDiscovery" -> {
-                val success = BluetoothReceiver.stopDiscovery(context)
-                result.success(success)
-            }
+            "clearTargetDevice" -> { AudioForegroundService.targetDeviceAddress = ""; result.success(true) }
+            "connectDevice" -> BluetoothReceiver.connectDevice(context, call.argument<String>("address") ?: "") { result.success(it) }
+            "disconnectDevice" -> BluetoothReceiver.disconnectDevice(context, call.argument<String>("address") ?: "") { result.success(it) }
+            "startDiscovery" -> result.success(BluetoothReceiver.startDiscovery(context))
+            "stopDiscovery"  -> result.success(BluetoothReceiver.stopDiscovery(context))
             "setConnectionMode" -> {
                 val mode = call.argument<String>("mode") ?: "phone_bluetooth"
                 AudioForegroundService.connectionMode = mode
-                val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                prefs.edit().putString("flutter.connection_mode", mode).apply()
+                context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    .edit().putString("flutter.connection_mode", mode).apply()
                 result.success(true)
             }
-            "openApp" -> {
-                openApp(result)
-            }
+            "openApp" -> openApp(result)
             else -> result.notImplemented()
         }
     }
@@ -284,50 +282,24 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         try {
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             if (launchIntent != null) {
-                // 🟢 ĐÂY LÀ CẤU HÌNH QUAN TRỌNG NHẤT ĐỂ MỞ APP ỔN ĐỊNH
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                    Intent.FLAG_ACTIVITY_SINGLE_TOP or 
-                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                
-                // Đảm bảo intent nhắm đúng vào main activity của app
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 launchIntent.action = Intent.ACTION_MAIN
                 launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-
                 context.startActivity(launchIntent)
                 result.success(true)
-            } else {
-                result.success(false)
-            }
+            } else result.success(false)
         } catch (e: Exception) {
-            e.printStackTrace()
-            // Catch-all dự phòng: Cố gắng mở lại bằng package name nếu intent trên thất bại
-            try {
-                val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-                result.success(true)
-            } catch (e2: Exception) {
-                result.success(false)
-            }
+            e.printStackTrace(); result.success(false)
         }
     }
 
-    private fun startAudioService(action: String) {
-        val intent = buildServiceIntent(action)
-        startServiceSafe(intent)
-    }
+    private fun startAudioService(action: String) = startServiceSafe(buildServiceIntent(action))
 
-    private fun buildServiceIntent(action: String): Intent {
-        return Intent(context, AudioForegroundService::class.java).apply {
-            this.action = action
-        }
-    }
+    private fun buildServiceIntent(action: String) =
+        Intent(context, AudioForegroundService::class.java).apply { this.action = action }
 
     private fun startServiceSafe(intent: Intent) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+        else context.startService(intent)
     }
 }

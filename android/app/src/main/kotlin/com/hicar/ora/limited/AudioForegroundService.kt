@@ -37,6 +37,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         const val ACTION_PLAY_GREETING_DELAYED = "ACTION_PLAY_GREETING_DELAYED"
         const val ACTION_STOP_AUDIO = "ACTION_STOP_AUDIO"
         const val ACTION_BLUETOOTH_DISCONNECTED = "ACTION_BLUETOOTH_DISCONNECTED"
+        const val EXTRA_PREFER_BOOT_AUDIO = "EXTRA_PREFER_BOOT_AUDIO"
 
         const val NOTIFICATION_CHANNEL_ID = "hicar_service_channel"
         const val NOTIFICATION_ID = 1001
@@ -117,18 +118,16 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         greetingAudioPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
         goodbyeAudioPath = prefs.getString("flutter.goodbye_audio_path", "") ?: ""
 
-        // 🟢 ƯU TIÊN: Chỉ dùng file Boot nếu chưa có thiết lập nhạc chính thức
-        if (greetingAudioPath.isEmpty()) {
-            val bootGreeting = File(storageContext.filesDir, "boot_greeting.mp3")
-            if (bootGreeting.exists()) {
-                greetingAudioPath = bootGreeting.absolutePath
+        // 🟢 ƯU TIÊN: Dùng file Boot nếu path chính chưa có hoặc chưa truy cập được sau restart
+        if (greetingAudioPath.isEmpty() || !File(greetingAudioPath).exists()) {
+            getBootAudioPath("boot_greeting.mp3")?.let {
+                greetingAudioPath = it
             }
         }
         
-        if (goodbyeAudioPath.isEmpty()) {
-            val bootGoodbye = File(storageContext.filesDir, "boot_goodbye.mp3")
-            if (bootGoodbye.exists()) {
-                goodbyeAudioPath = bootGoodbye.absolutePath
+        if (goodbyeAudioPath.isEmpty() || !File(goodbyeAudioPath).exists()) {
+            getBootAudioPath("boot_goodbye.mp3")?.let {
+                goodbyeAudioPath = it
             }
         }
 
@@ -156,14 +155,21 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             ACTION_STOP -> stopSelf()
 
             ACTION_PLAY_GREETING -> {
-                val path = intent.getStringExtra("audioPath") ?: greetingAudioPath
+                val path = if (intent.getBooleanExtra(EXTRA_PREFER_BOOT_AUDIO, false)) {
+                    getBootAudioPath("boot_greeting.mp3") ?: greetingAudioPath
+                } else {
+                    intent.getStringExtra("audioPath") ?: greetingAudioPath
+                }
                 playAudio(path, "greeting")
             }
             ACTION_PLAY_GOODBYE -> {
                 val path = intent.getStringExtra("audioPath") ?: goodbyeAudioPath
                 playAudio(path, "goodbye")
             }
-            ACTION_PLAY_GREETING_DELAYED -> scheduleDelayedGreeting()
+            ACTION_PLAY_GREETING_DELAYED -> {
+                val preferBootAudio = intent.getBooleanExtra(EXTRA_PREFER_BOOT_AUDIO, false)
+                scheduleDelayedGreeting(useBootAudio = preferBootAudio)
+            }
             ACTION_STOP_AUDIO -> stopPlayback()
             ACTION_BLUETOOTH_DISCONNECTED -> {
                 cancelDelayedPlay()
@@ -172,6 +178,16 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         }
 
         return START_STICKY
+    }
+
+    private fun getBootAudioPath(fileName: String): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return null
+
+        val storageContext = applicationContext.createDeviceProtectedStorageContext()
+        val bootAudio = File(storageContext.filesDir, fileName)
+        val result = if (bootAudio.exists()) bootAudio.absolutePath else null
+        Log.d("HiCarAudio", "getBootAudioPath($fileName): exists=${bootAudio.exists()}, size=${if (bootAudio.exists()) bootAudio.length() else 0}, path=${bootAudio.absolutePath}")
+        return result
     }
 
     override fun onDestroy() {
@@ -241,14 +257,28 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     // Audio Playback
     // ==============================
 
-    private fun scheduleDelayedGreeting() {
+    private fun scheduleDelayedGreeting(useBootAudio: Boolean = false) {
         cancelDelayedPlay()
         delayedRunnable = Runnable {
-            if (greetingAudioPath.isNotEmpty()) {
-                playAudio(greetingAudioPath, "greeting")
+            val path = if (useBootAudio) {
+                // Ưu tiên file đã copy vào vùng boot-safe; fallback sang prefs path nếu cần
+                val bootPath = getBootAudioPath("boot_greeting.mp3")
+                Log.d("HiCarService", "Boot greeting: bootPath=$bootPath, prefPath=$greetingAudioPath")
+                bootPath ?: greetingAudioPath
+            } else {
+                greetingAudioPath
+            }
+            if (path.isNotEmpty()) {
+                playAudio(path, "greeting")
+            } else {
+                Log.w("HiCarService", "scheduleDelayedGreeting: no valid audio path found")
             }
         }
-        handler.postDelayed(delayedRunnable!!, (delaySeconds * 1000).toLong())
+        // Khi boot, đảm bảo đợi tối thiểu 5 giây để audio system khởi tạo xong
+        val effectiveDelay = if (useBootAudio) maxOf(delaySeconds.toLong(), 5L) * 1000L
+                             else delaySeconds * 1000L
+        Log.d("HiCarService", "scheduleDelayedGreeting: delay=${effectiveDelay}ms, useBootAudio=$useBootAudio")
+        handler.postDelayed(delayedRunnable!!, effectiveDelay)
     }
 
     private fun cancelDelayedPlay() {
@@ -257,10 +287,33 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     }
 
     private fun playAudio(path: String, type: String) {
-        if (path.isEmpty()) return
+        Log.d("HiCarAudio", "playAudio called: type=$type, path=$path")
+        if (path.isEmpty()) {
+            Log.w("HiCarAudio", "playAudio: path is EMPTY – nothing to play")
+            return
+        }
+        if (!java.io.File(path).exists()) {
+            Log.e("HiCarAudio", "playAudio: file does NOT exist at path=$path")
+            return
+        }
 
         val granted = requestAudioFocus()
-        if (!granted) return
+        Log.d("HiCarAudio", "playAudio: audioFocus granted=$granted")
+        if (!granted) {
+            // Retry once after 2 seconds – audio subsystem may still be initializing at boot
+            Log.w("HiCarAudio", "playAudio: focus not granted, retrying in 2s...")
+            handler.postDelayed({
+                val granted2 = requestAudioFocus()
+                Log.d("HiCarAudio", "playAudio retry: focus granted=$granted2")
+                if (granted2) doPlayAudio(path, type)
+                else Log.e("HiCarAudio", "playAudio: focus retry FAILED, giving up")
+            }, 2000)
+            return
+        }
+        doPlayAudio(path, type)
+    }
+
+    private fun doPlayAudio(path: String, type: String) {
 
         try {
             // Re-use or reset MediaPlayer to avoid rapid recreation stuttering

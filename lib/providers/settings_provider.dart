@@ -104,10 +104,7 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setString('connection_mode', _connectionMode);
       _pendingConnectionMode = null;
 
-      AppLogger.instance.log(
-        'Đã đổi chế độ kết nối: $oldMode -> $_connectionMode',
-        type: 'user_action',
-      );
+      debugPrint('SettingsProvider: mode changed $oldMode → $_connectionMode');
 
       // 🧹 DỌN DẸP KHI ĐỔI MODE
       if (oldMode == 'phone_bluetooth' &&
@@ -144,6 +141,7 @@ class SettingsProvider extends ChangeNotifier {
         AppLogger.instance.log(
           'Lỗi đồng bộ mode sang Native: $e',
           type: 'native_error',
+          details: {'mode': _connectionMode, 'error': e.toString()},
         );
       }
     }

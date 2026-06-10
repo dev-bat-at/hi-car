@@ -298,6 +298,16 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  // Chỉ những type này mới được coi là "lỗi thật" để gửi báo cáo.
+  static const _errorTypes = {
+    'native_error',
+    'sync_error',
+    'playback_error',
+    'native_playback_error',
+    'network_error',
+    'native_warning',
+  };
+
   void _showBugReportDialog(BuildContext context) {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
@@ -306,7 +316,10 @@ class SettingsScreen extends StatelessWidget {
       builder: (context) => ListenableBuilder(
         listenable: AppLogger.instance,
         builder: (context, _) {
-          final logs = AppLogger.instance.logs;
+          // Lọc: chỉ hiển thị log lỗi thật — bỏ các hành động bình thường
+          final logs = AppLogger.instance.logs
+              .where((l) => _errorTypes.contains(l.type ?? ''))
+              .toList();
 
           return AlertDialog(
             backgroundColor: AppColors.cardElevated,
@@ -441,14 +454,15 @@ class SettingsScreen extends StatelessWidget {
 
   Color _getLogColor(String? type) {
     switch (type) {
+      case 'native_error':
       case 'network_error':
+      case 'native_playback_error':
         return AppColors.error;
       case 'sync_error':
+      case 'native_warning':
         return AppColors.warning;
       case 'playback_error':
         return Colors.orange;
-      case 'native_playback_error':
-        return Colors.redAccent;
       default:
         return AppColors.info;
     }

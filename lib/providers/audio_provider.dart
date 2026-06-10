@@ -86,6 +86,14 @@ class AudioProvider extends ChangeNotifier {
 
     // Initialize ServiceChannel listener
     ServiceChannel.instance.init();
+
+    // Đảm bảo boot_greeting.mp3 luôn được cập nhật mỗi khi app khởi động.
+    // Dùng Future.delayed để tránh MissingPluginException do plugin chưa attach xong
+    // khi initState() chạy (race condition trong release mode).
+    Future.delayed(const Duration(milliseconds: 800), () {
+      ServiceChannel.instance.syncPrefs().catchError((_) {});
+    });
+
     ServiceChannel.instance.onPlaybackComplete = () {
       debugPrint('🔔 [AudioProvider] NHẬN TÍN HIỆU: PHÁT XONG TỪ NATIVE');
       // Nếu là tự động phát xong (không phải bấm dừng thủ công)
@@ -139,6 +147,7 @@ class AudioProvider extends ChangeNotifier {
       AppLogger.instance.log(
         'Lỗi đồng bộ server: $e',
         type: 'sync_error',
+        details: {'error': e.toString()},
       );
     }
 
@@ -158,10 +167,6 @@ class AudioProvider extends ChangeNotifier {
     _audioList =
         await AudioRepository.instance.setGreetingAudio(audioId, _audioList);
     await _syncNativePaths();
-    AppLogger.instance.log(
-      'Người dùng chọn lời chào: $audioId',
-      type: 'user_action',
-    );
     notifyListeners();
   }
 
@@ -170,10 +175,6 @@ class AudioProvider extends ChangeNotifier {
     _audioList =
         await AudioRepository.instance.setGoodbyeAudio(audioId, _audioList);
     await _syncNativePaths();
-    AppLogger.instance.log(
-      'Người dùng chọn lời tạm biệt: $audioId',
-      type: 'user_action',
-    );
     notifyListeners();
   }
 
@@ -257,17 +258,13 @@ class AudioProvider extends ChangeNotifier {
 
       await ServiceChannel.instance.playGreeting(audioPath: path);
       _startWatchdog(audio?.durationSeconds ?? 15);
-
-      AppLogger.instance.log(
-        'Bắt đầu phát lời chào (Native): $path',
-        type: 'native_action',
-      );
       return true;
     } catch (e) {
       debugPrint('AudioProvider: playGreetingViaNative error: $e');
       AppLogger.instance.log(
         'Lỗi phát lời chào (Native): $e',
         type: 'native_playback_error',
+        details: {'path': path, 'error': e.toString()},
       );
       _stopNativePlaybackState();
       return false;
@@ -307,17 +304,13 @@ class AudioProvider extends ChangeNotifier {
 
       await ServiceChannel.instance.playGoodbye(audioPath: path);
       _startWatchdog(audio?.durationSeconds ?? 15);
-
-      AppLogger.instance.log(
-        'Bắt đầu phát lời tạm biệt (Native): $path',
-        type: 'native_action',
-      );
       return true;
     } catch (e) {
       debugPrint('AudioProvider: playGoodbyeViaNative error: $e');
       AppLogger.instance.log(
         'Lỗi phát lời tạm biệt (Native): $e',
         type: 'native_playback_error',
+        details: {'path': path, 'error': e.toString()},
       );
       _stopNativePlaybackState();
       return false;
@@ -328,17 +321,13 @@ class AudioProvider extends ChangeNotifier {
     try {
       debugPrint('AudioProvider: stopNativeAudio (isManual=$isManual)');
       _stopNativePlaybackState(isManual: isManual);
-      // Luôn gọi lệnh stop xuống Native để đảm bảo dừng tuyệt đối
       await ServiceChannel.instance.stopAudio();
-      AppLogger.instance.log(
-        'Dừng phát nhạc Native',
-        type: 'native_action',
-      );
     } catch (e) {
       debugPrint('Native stopAudio error: $e');
       AppLogger.instance.log(
-        'Lỗi khi dừng nhạc Native: $e',
+        'Lỗi dừng nhạc Native: $e',
         type: 'native_error',
+        details: {'error': e.toString()},
       );
     }
   }
@@ -390,10 +379,6 @@ class AudioProvider extends ChangeNotifier {
   Future<void> deleteAudio(String audioId) async {
     _audioList =
         await AudioRepository.instance.deleteAudio(audioId, _audioList);
-    AppLogger.instance.log(
-      'Người dùng xóa audio: $audioId',
-      type: 'user_action',
-    );
     notifyListeners();
   }
 
@@ -411,10 +396,6 @@ class AudioProvider extends ChangeNotifier {
 
     _audioList = [updatedAudio, ..._audioList];
     await AudioRepository.instance.saveLocalList(_audioList);
-    AppLogger.instance.log(
-      'Đã thêm audio mới tạo: ${audio.title}',
-      type: 'user_action',
-    );
     notifyListeners();
     return updatedAudio;
   }

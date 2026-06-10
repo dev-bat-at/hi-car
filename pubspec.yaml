@@ -25,7 +25,6 @@ dependencies:
 
   # Audio
   just_audio: ^0.9.42
-  audio_service: ^0.18.15
 
   # Network
   dio: ^5.7.0
