@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../data/models/user_model.dart';
 import '../data/repositories/auth_repository.dart';
+import '../data/services/api_client.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
@@ -50,7 +51,7 @@ class AuthProvider extends ChangeNotifier {
       _setStatus(AuthStatus.authenticated);
       return true;
     } catch (e) {
-      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      _errorMessage = ApiClient.formatError(e);
       _setStatus(AuthStatus.error);
       return false;
     }

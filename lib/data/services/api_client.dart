@@ -4,6 +4,8 @@ import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/logger.dart';
+import '../../core/app_router.dart';
+import '../repositories/auth_repository.dart';
 
 /// Performance-optimized API Client with memory caching and Bearer Auth.
 class ApiClient {
@@ -78,10 +80,15 @@ class ApiClient {
 
         // 🔴 Rule: 1 Account = 1 Device. Revoke on 401 Unauthorized.
         if (e.response?.statusCode == 401) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove('auth_token');
-          // Note: In a real app, you'd trigger a logout event here via an EventBus or a Provider.
-          // For now, the next time the app checks token, it will be null.
+          // Thoroughly clear all local state
+          await AuthRepository.instance.logout();
+
+          // Force navigate to login
+          AppRouter.router.go('/login');
+
+          if (kDebugMode) {
+            print('🚨 SESSION REVOKED: Redirecting to login...');
+          }
         }
         return handler.next(e);
       },
@@ -122,4 +129,53 @@ class ApiClient {
   }
 
   void clearCache() => _memoryCache.clear();
+
+  static String formatError(dynamic e) {
+    if (e is DioException) {
+      // 1. Try to extract message from response body
+      if (e.response?.data != null) {
+        final data = e.response?.data;
+        if (data is Map) {
+          if (data.containsKey('message') && data['message'] != null) {
+            return data['message'].toString();
+          }
+          if (data.containsKey('error') && data['error'] != null) {
+            return data['error'].toString();
+          }
+          // Nesting support: { "data": { "message": "..." } }
+          if (data.containsKey('data') && data['data'] is Map) {
+            final nestedData = data['data'] as Map;
+            if (nestedData.containsKey('message') &&
+                nestedData['message'] != null) {
+              return nestedData['message'].toString();
+            }
+          }
+        } else if (data is String && data.isNotEmpty && data.length < 200) {
+          return data;
+        }
+      }
+
+      // 2. Fallback to DioException types
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'Kết nối máy chủ quá hạn. Vui lòng thử lại.';
+        case DioExceptionType.connectionError:
+          return 'Không có kết nối internet.';
+        case DioExceptionType.badResponse:
+          final code = e.response?.statusCode;
+          if (code == 401)
+            return 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.';
+          if (code == 403) return 'Bạn không có quyền thực hiện hành động này.';
+          if (code == 404) return 'Không tìm thấy máy chủ.';
+          if (code == 500) return 'Lỗi máy chủ hệ thống (500).';
+          return 'Lỗi phản hồi từ máy chủ ($code).';
+        default:
+          return 'Lỗi hệ thống (${e.response?.statusCode ?? "Network"}).';
+      }
+    }
+    final errorStr = e.toString().replaceFirst('Exception: ', '');
+    return errorStr.length > 200 ? 'Lỗi hệ thống không xác định' : errorStr;
+  }
 }

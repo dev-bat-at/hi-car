@@ -18,6 +18,7 @@ import 'providers/bluetooth_provider.dart';
 import 'providers/overlay_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/permission_provider.dart';
+import 'providers/studio_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -120,16 +121,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  // 🟢 Đánh dấu app từng bị đẩy xuống nền, để phân biệt "mở lại app" với lần khởi động đầu.
+  bool _wasPaused = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.inactive) {
       _overlayProvider.hideOverlay();
+
+      // 🟢 Chế độ Màn Độ: mỗi lần MỞ LẠI app (resume từ nền) thì phát lại lời chào.
+      //    Vì sau khi phát xong app chỉ bị thu nhỏ (moveToHome) chứ không bị kill,
+      //    nên initState/_initPlayOnOpen không chạy lại — phải tự kích hoạt ở đây.
+      if (state == AppLifecycleState.resumed && _wasPaused) {
+        _wasPaused = false;
+        _maybePlayGreetingOnResume();
+      }
     } else if (state == AppLifecycleState.paused) {
+      _wasPaused = true;
       _overlayProvider.showOverlay().then((_) {
         _updateOverlayState();
       });
     }
+  }
+
+  /// Phát lại lời chào khi app được mở lại (chỉ áp dụng chế độ Màn Độ + bật "phát khi mở app").
+  Future<void> _maybePlayGreetingOnResume() async {
+    if (_settingsProvider.connectionMode != 'android_screen_mode') return;
+    if (!_settingsProvider.playOnOpen) return;
+    if (_audioProvider.isNativeGreetingPlaying ||
+        _audioProvider.isNativeGoodbyePlaying) {
+      return;
+    }
+
+    // Chờ một nhịp để hệ thống ổn định (audio focus, UI) sau khi resume.
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (_audioProvider.isNativeGreetingPlaying ||
+        _audioProvider.isNativeGoodbyePlaying) {
+      return;
+    }
+
+    debugPrint('Main: App resumed in screen mode → phát lại lời chào');
+    await _audioProvider.playGreetingViaNative();
   }
 
   void _initIsolateListener() {
@@ -266,6 +299,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _settingsProvider),
         ChangeNotifierProvider(
             create: (_) => PermissionProvider()..checkAllPermissions()),
+        ChangeNotifierProvider(create: (_) => StudioProvider()),
       ],
       child: LayoutBuilder(
         builder: (context, constraints) {

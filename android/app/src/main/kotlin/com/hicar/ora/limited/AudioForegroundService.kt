@@ -217,12 +217,20 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
      */
     private fun startForegroundCompat(fromBoot: Boolean) {
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val type = if (fromBoot) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                       else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            startForeground(NOTIFICATION_ID, notification, type)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        when {
+            // API 34+ (Android 14/15): mediaPlayback BỊ CẤM start từ BOOT_COMPLETED, và type
+            // specialUse chỉ tồn tại từ API 34 → luồng boot dùng specialUse, còn lại mediaPlayback.
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
+                val type = if (fromBoot) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                           else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                startForeground(NOTIFICATION_ID, notification, type)
+            }
+            // API 29–33 (Android 10–13): CHƯA có giới hạn boot → luôn dùng mediaPlayback (kể cả luồng boot).
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            }
+            // API < 29 (Android 9 trở xuống): startForeground 2 tham số, không cần khai báo type.
+            else -> startForeground(NOTIFICATION_ID, notification)
         }
     }
 

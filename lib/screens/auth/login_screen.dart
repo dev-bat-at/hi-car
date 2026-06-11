@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
 import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/audio_provider.dart';
 import '../../widgets/premium_loading.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -70,6 +71,12 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (!mounted) return;
     if (success) {
+      // Synchronize audio list for the new account immediately
+      final audio = context.read<AudioProvider>();
+      await audio.clearCache();
+      audio.syncFromServer(); // Start sync in background
+
+      if (!mounted) return;
       UiUtils.showSuccess(context, 'Đăng nhập thành công');
       context.go('/home');
     } else {

@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/audio_model.dart';
 import '../services/api_service.dart';
+import '../services/api_client.dart';
 import '../../core/logger.dart';
 
 /// SyncService - Performs optimized background synchronization of audio files.
@@ -95,7 +96,8 @@ class SyncService {
       onProgress?.call('Đồng bộ thành công!', 1.0);
       return syncedList;
     } catch (e) {
-      onProgress?.call('Lỗi đồng bộ: $e', 1.0);
+      final formattedError = ApiClient.formatError(e);
+      onProgress?.call('Lỗi đồng bộ: $formattedError', 1.0);
       AppLogger.instance.log(
         'Lỗi đồng bộ: $e',
         type: 'sync_error',

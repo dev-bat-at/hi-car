@@ -8,6 +8,7 @@ import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/audio_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../data/services/api_client.dart';
 import '../../core/logger.dart';
 import 'package:intl/intl.dart';
 
@@ -479,7 +480,7 @@ class SettingsScreen extends StatelessWidget {
     } catch (e) {
       EasyLoading.dismiss();
       if (context.mounted) {
-        UiUtils.showError(context, 'Lỗi khi gửi: $e');
+        UiUtils.showError(context, 'Lỗi khi gửi: ${ApiClient.formatError(e)}');
       }
     }
   }

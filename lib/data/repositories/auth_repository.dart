@@ -51,9 +51,22 @@ class AuthRepository {
 
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    // Auth & User
     await prefs.remove(AppConstants.keyAuthToken);
     await prefs.remove(AppConstants.keyUserData);
+
+    // Audio Metadata
+    await prefs.remove(AppConstants.keyAudioList);
     await prefs.remove('cached_audio_list');
+
+    // Audio Selection
+    await prefs.remove(AppConstants.keyGreetingAudioId);
+    await prefs.remove(AppConstants.keyGoodbyeAudioId);
+    await prefs.remove('greeting_audio_path');
+    await prefs.remove('goodbye_audio_path');
+
+    // Others
+    await prefs.remove(AppConstants.keyLastSyncTime);
   }
 
   // ===== Check Auth =====

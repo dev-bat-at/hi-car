@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/audio_model.dart';
 import '../data/repositories/audio_repository.dart';
 import '../data/services/sync_service.dart';
+import '../data/services/api_client.dart';
 import '../native/service_channel.dart';
 import '../core/constants.dart';
 import '../core/logger.dart';
@@ -114,6 +115,26 @@ class AudioProvider extends ChangeNotifier {
     }
   }
 
+  // ===== Storage & State Management =====
+
+  Future<void> clearCache() async {
+    _audioList = [];
+    _activeGreetingId = null;
+    _activeGoodbyeId = null;
+    _currentlyPlaying = null;
+    _isPlaying = false;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.keyAudioList);
+    await prefs.remove('cached_audio_list');
+    await prefs.remove(AppConstants.keyGreetingAudioId);
+    await prefs.remove(AppConstants.keyGoodbyeAudioId);
+    await prefs.remove('greeting_audio_path');
+    await prefs.remove('goodbye_audio_path');
+
+    notifyListeners();
+  }
+
   // ===== Sync =====
 
   Future<void> syncFromServer() async {
@@ -142,8 +163,8 @@ class AudioProvider extends ChangeNotifier {
       await _syncNativePaths();
     } catch (e) {
       _syncStatus = SyncStatus.error;
-      _syncError = e.toString();
-      _syncMessage = 'Lỗi đồng bộ';
+      _syncError = ApiClient.formatError(e);
+      _syncMessage = _syncError!;
       AppLogger.instance.log(
         'Lỗi đồng bộ server: $e',
         type: 'sync_error',

@@ -6,6 +6,7 @@ import 'package:hi_car/providers/settings_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
+import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/audio_provider.dart';
 import '../../providers/overlay_provider.dart';
@@ -29,11 +30,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAll();
+      context.read<AudioProvider>().addListener(_audioListener);
     });
+  }
+
+  void _audioListener() {
+    if (!mounted) return;
+    final audio = context.read<AudioProvider>();
+    if (audio.syncStatus == SyncStatus.error && audio.syncError != null) {
+      UiUtils.showError(context, audio.syncError!);
+    } else if (audio.syncStatus == SyncStatus.success) {
+      UiUtils.showSuccess(context, audio.syncMessage);
+    }
   }
 
   @override
   void dispose() {
+    context.read<AudioProvider>().removeListener(_audioListener);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
