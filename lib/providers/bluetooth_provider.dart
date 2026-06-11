@@ -10,7 +10,10 @@ class BluetoothProvider extends ChangeNotifier {
   int _delaySeconds = AppConstants.defaultDelaySeconds;
   bool _isLoading = false;
   String? _error;
+  List<BluetoothDeviceModel> _scannedDevices = [];
+  bool _isScanning = false;
   final Map<String, bool> _connectingDevices = {};
+  Future<bool> Function()? onTargetConnected;
 
   List<BluetoothDeviceModel> get pairedDevices => _pairedDevices;
   BluetoothDeviceModel? get targetDevice => _targetDevice;
@@ -18,16 +21,48 @@ class BluetoothProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasTargetDevice => _targetDevice != null;
+  List<BluetoothDeviceModel> get scannedDevices => _scannedDevices;
+  bool get isScanning => _isScanning;
   Map<String, bool> get connectingDevices => _connectingDevices;
 
   // ===== Init =====
 
   Future<void> init() async {
-    await _loadSavedTarget();
-    
-    // Register listener for native connection status updates
-    BluetoothChannel.instance.setConnectionChangeHandler((address, action) async {
+    BluetoothChannel.instance.init();
+
+    // Register listener for native connection status updates (Set early to avoid missing events)
+    BluetoothChannel.instance
+        .setConnectionChangeHandler((address, action) async {
       await loadPairedDevices();
+
+      // If a device just connected and it matches our target, trigger autoplay if in foreground
+      debugPrint(
+          'BT Handler: action=$action, incoming=$address, target=${_targetDevice?.address}');
+      if (action == 'connected' &&
+          _targetDevice?.address.toLowerCase() == address.toLowerCase()) {
+        debugPrint('BT Handler: MATCH FOUND, triggering greeting...');
+        if (onTargetConnected != null) {
+          await onTargetConnected!();
+        }
+      }
+    });
+
+    await _loadSavedTarget();
+    await loadPairedDevices();
+
+    BluetoothChannel.instance.setDiscoveryHandler((raw) async {
+      final device = BluetoothDeviceModel.fromMap(raw);
+      debugPrint('Found Bluetooth device: ${device.name} (${device.address})');
+      // Check if already in scanned or paired list
+      if (!_pairedDevices.any((d) => d.address == device.address) &&
+          !_scannedDevices.any((d) => d.address == device.address)) {
+        _scannedDevices.add(device);
+        notifyListeners();
+      }
+    }, () async {
+      _isScanning = false;
+      await loadPairedDevices();
+      notifyListeners();
     });
   }
 
@@ -54,6 +89,29 @@ class BluetoothProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ===== Scan Devices =====
+
+  Future<void> startScan() async {
+    if (_isScanning) return;
+    _isScanning = true;
+    _scannedDevices.clear();
+    notifyListeners();
+
+    final started = await BluetoothChannel.instance.startDiscovery();
+    if (!started) {
+      _isScanning = false;
+      _error = 'Không thể bắt đầu tìm kiếm';
+      notifyListeners();
+    }
+  }
+
+  Future<void> stopScan() async {
+    if (!_isScanning) return;
+    await BluetoothChannel.instance.stopDiscovery();
+    _isScanning = false;
+    notifyListeners();
+  }
+
   // ===== Toggle Connection =====
 
   Future<void> toggleDeviceConnection(BluetoothDeviceModel device) async {
@@ -66,14 +124,20 @@ class BluetoothProvider extends ChangeNotifier {
     try {
       if (device.isConnected) {
         await BluetoothChannel.instance.disconnectDevice(address);
+        // Optimistically update to disconnected
+        _pairedDevices = _pairedDevices
+            .map((d) =>
+                d.address == address ? d.copyWith(isConnected: false) : d)
+            .toList();
+        notifyListeners();
       } else {
         // Automatically mark as target device when attempting connection
         await setTargetDevice(device);
         await BluetoothChannel.instance.connectDevice(address);
       }
-      
-      // Let it process for a bit, then refresh paired list status
-      await Future.delayed(const Duration(milliseconds: 1000));
+
+      // Refresh list to sync with native reality
+      await Future.delayed(const Duration(milliseconds: 2000));
       await loadPairedDevices();
     } catch (_) {
     } finally {
@@ -108,7 +172,8 @@ class BluetoothProvider extends ChangeNotifier {
 
   Future<void> clearTargetDevice() async {
     _targetDevice = null;
-    _pairedDevices = _pairedDevices.map((d) => d.copyWith(isSelected: false)).toList();
+    _pairedDevices =
+        _pairedDevices.map((d) => d.copyWith(isSelected: false)).toList();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.keyTargetDeviceAddress);
@@ -145,7 +210,8 @@ class BluetoothProvider extends ChangeNotifier {
         AppConstants.defaultDelaySeconds;
 
     if (address.isNotEmpty) {
-      _targetDevice = BluetoothDeviceModel(name: name, address: address, isSelected: true);
+      _targetDevice =
+          BluetoothDeviceModel(name: name, address: address, isSelected: true);
     }
     notifyListeners();
   }

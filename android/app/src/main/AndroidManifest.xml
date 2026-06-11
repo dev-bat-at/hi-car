@@ -18,7 +18,7 @@
         android:maxSdkVersion="28" />
 
     <application
-        android:label="Giọng Thương Gia"
+        android:label="Chào Xe Tự Động"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
@@ -43,12 +43,14 @@
             </intent-filter>
         </activity>
 
-        <!-- ===== BOOT RECEIVER ===== -->
+        <!-- Cho phép khởi chạy khi máy đang khóa (Direct Boot) -->
         <receiver
             android:name="com.hicar.ora.limited.BootReceiver"
             android:exported="true"
-            android:enabled="true">
+            android:enabled="true"
+            android:directBootAware="true"> 
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
@@ -63,15 +65,24 @@
             <intent-filter>
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+                <action android:name="android.bluetooth.device.action.FOUND" />
+                <action android:name="android.bluetooth.adapter.action.DISCOVERY_FINISHED" />
             </intent-filter>
         </receiver>
 
-        <!-- ===== AUDIO FOREGROUND SERVICE (MediaBrowserService for Android Auto) ===== -->
+        <!-- Cho phép phát nhạc khi máy đang khóa (Direct Boot) -->
         <service
             android:name="com.hicar.ora.limited.AudioForegroundService"
             android:exported="true"
-            android:foregroundServiceType="mediaPlayback"
+            android:foregroundServiceType="mediaPlayback|specialUse"
+            android:directBootAware="true"
             android:stopWithTask="false">
+            <!-- specialUse: cho phép khởi động service từ BOOT_COMPLETED trên Android 15
+                 (mediaPlayback bị cấm start từ boot ở API 35). Luồng thường + Android Auto
+                 vẫn dùng mediaPlayback nên không ảnh hưởng. -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Automotive greeting audio playback at device boot" />
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>

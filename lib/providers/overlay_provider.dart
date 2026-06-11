@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,19 +30,34 @@ class OverlayDebugStore {
 }
 
 class OverlayProvider extends ChangeNotifier {
+  static const double _overlayWindowWidth = 80.0;
+  static const double _overlayWindowHeight = 250.0;
+
   bool _isOverlayShowing = false;
   bool _hasPermission = false;
-  bool _isBubbleEnabled = true;
+  bool _isBubbleEnabled = false;
+  bool _enableAfterPermissionGrant = false;
 
   bool get isOverlayShowing => _isOverlayShowing;
   bool get hasPermission => _hasPermission;
   bool get isBubbleEnabled => _isBubbleEnabled;
 
+  int _toInitialOverlayPixels(double logicalSize) {
+    final views = ui.PlatformDispatcher.instance.views;
+    final ratio = views.isNotEmpty ? views.first.devicePixelRatio : 3.0;
+    return (logicalSize * ratio).round();
+  }
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _isBubbleEnabled = prefs.getBool('is_bubble_enabled') ?? true;
     await OverlayDebugStore.load();
     await checkPermission();
+    final savedBubbleEnabled = prefs.getBool('is_bubble_enabled');
+    _isBubbleEnabled = _hasPermission ? (savedBubbleEnabled ?? true) : false;
+    if (!_hasPermission && savedBubbleEnabled != false) {
+      await prefs.setBool('is_bubble_enabled', false);
+    }
+    notifyListeners();
     await syncOverlayState();
   }
 
@@ -49,6 +66,16 @@ class OverlayProvider extends ChangeNotifier {
       _hasPermission = await FlutterOverlayWindow.isPermissionGranted();
     } catch (_) {
       _hasPermission = false;
+    }
+    if (_hasPermission && _enableAfterPermissionGrant) {
+      _enableAfterPermissionGrant = false;
+      _isBubbleEnabled = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_bubble_enabled', true);
+    } else if (!_hasPermission) {
+      _isBubbleEnabled = false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_bubble_enabled', false);
     }
     notifyListeners();
   }
@@ -75,21 +102,35 @@ class OverlayProvider extends ChangeNotifier {
 
   Future<bool> setBubbleEnabled(bool value) async {
     if (value) {
-      final granted = await requestPermission();
-      if (!granted) {
+      await checkPermission();
+      if (!_hasPermission) {
+        _enableAfterPermissionGrant = true;
+        final granted = await requestPermission();
+        if (!granted) {
+          _isBubbleEnabled = false;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('is_bubble_enabled', false);
+          notifyListeners();
+          return false;
+        }
+      }
+
+      if (!_hasPermission) {
         _isBubbleEnabled = false;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_bubble_enabled', false);
         notifyListeners();
         return false;
       }
+    } else {
+      _enableAfterPermissionGrant = false;
     }
 
     _isBubbleEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_bubble_enabled', value);
     notifyListeners();
-    
+
     if (value) {
       // If enabled and app is in background, it will show automatically.
     } else {
@@ -102,18 +143,19 @@ class OverlayProvider extends ChangeNotifier {
     if (!_isBubbleEnabled) return;
     await checkPermission();
     if (!_hasPermission) return;
-    
+
     try {
       final active = await FlutterOverlayWindow.isActive();
       if (!active) {
         await FlutterOverlayWindow.showOverlay(
-          enableDrag: true,
-          flag: OverlayFlag.focusPointer,
+          enableDrag: true, // 🟢 ĐỔI TỪ false THÀNH true
+          flag: OverlayFlag.defaultFlag,
           alignment: OverlayAlignment.centerRight,
           visibility: NotificationVisibility.visibilityPublic,
           positionGravity: PositionGravity.auto,
-          height: 84,
-          width: 84,
+          height: _toInitialOverlayPixels(_overlayWindowHeight),
+          width: _toInitialOverlayPixels(_overlayWindowWidth),
+          startPosition: const OverlayPosition(0, -259),
         );
       }
       await syncOverlayState();
@@ -122,11 +164,26 @@ class OverlayProvider extends ChangeNotifier {
 
   Future<void> hideOverlay() async {
     try {
-      final active = await FlutterOverlayWindow.isActive();
-      if (active) {
-        await FlutterOverlayWindow.closeOverlay();
-      }
+      await FlutterOverlayWindow.closeOverlay();
       await syncOverlayState();
+    } catch (_) {}
+  }
+
+  Future<void> updateOverlayState({
+    bool? isGreetingPlaying,
+    bool? isGoodbyePlaying,
+    String? errorMessage,
+  }) async {
+    try {
+      final active = await FlutterOverlayWindow.isActive();
+      if (!active) return;
+
+      await FlutterOverlayWindow.shareData({
+        'type': 'state_update',
+        'isGreetingPlaying': isGreetingPlaying,
+        'isGoodbyePlaying': isGoodbyePlaying,
+        'errorMessage': errorMessage,
+      });
     } catch (_) {}
   }
 }

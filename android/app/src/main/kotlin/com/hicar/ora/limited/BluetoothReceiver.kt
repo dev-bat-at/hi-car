@@ -2,10 +2,12 @@ package com.hicar.ora.limited
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.os.Build
 
 class BluetoothReceiver : BroadcastReceiver() {
@@ -39,6 +41,45 @@ class BluetoothReceiver : BroadcastReceiver() {
                 val method = device.javaClass.getMethod("isConnected")
                 method.invoke(device) as? Boolean ?: false
             } catch (e: Exception) {
+                false
+            }
+        }
+
+        fun isAddressConnected(context: Context, address: String): Boolean {
+            if (address.isEmpty()) return false
+            return try {
+                val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                val adapter = bluetoothManager?.adapter ?: return false
+                val device = adapter.getRemoteDevice(address) ?: return false
+                isDeviceConnected(device)
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        fun startDiscovery(context: Context): Boolean {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: return false
+            return try {
+                if (adapter.isDiscovering) {
+                    adapter.cancelDiscovery()
+                }
+                adapter.startDiscovery()
+            } catch (e: SecurityException) {
+                false
+            }
+        }
+
+        fun stopDiscovery(context: Context): Boolean {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: return false
+            return try {
+                if (adapter.isDiscovering) {
+                    adapter.cancelDiscovery()
+                } else {
+                    true
+                }
+            } catch (e: SecurityException) {
                 false
             }
         }
@@ -157,34 +198,82 @@ class BluetoothReceiver : BroadcastReceiver() {
         }
 
         val deviceAddress = device?.address ?: return
-        val targetAddress = AudioForegroundService.targetDeviceAddress
-
-        // Read connectionMode from SharedPreferences to know if we are in phone_bluetooth mode
-        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        
+        // Load target and mode directly from SharedPreferences to ensure they are available even if the Service isn't running
+        val regularPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val storageContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            context.createDeviceProtectedStorageContext()
+        } else {
+            context
+        }
+        val protectedPrefs = storageContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        
+        // Priority: Regular prefs (latest from UI) -> Protected prefs (boot sequence)
+        val prefs = if (regularPrefs.all.isNotEmpty()) regularPrefs else protectedPrefs
+        
         val connectionMode = prefs.getString("flutter.connection_mode", "phone_bluetooth") ?: "phone_bluetooth"
+        val targetAddress = prefs.getString("flutter.target_device_address", "") ?: ""
+        val autoPlayEnabled = prefs.getBoolean("flutter.auto_play_enabled", true)
 
-        // Notify MainActivity (if active) so UI updates connection state instantly
-        MainActivity.instance?.let { activity ->
-            activity.runOnUiThread {
-                activity.bluetoothChannel?.invokeMethod("onDeviceConnectionChanged", mapOf(
+
+        // 🟢 SỬA ĐỔI CHÍNH: Thay đổi từ gọi instance sang biến tĩnh tĩnh toàn cục để tránh lỗi Unresolved reference
+        // Send Bluetooth events to Flutter via Plugin
+        when (intent.action) {
+            BluetoothDevice.ACTION_FOUND -> {
+                HiCarPlugin.instance?.invokeBluetoothMethod("onDeviceFound", mapOf(
+                    "name" to (device.name ?: "Unknown Device"),
                     "address" to deviceAddress,
-                    "action" to intent.action
+                    "isConnected" to false
+                ))
+            }
+            BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                HiCarPlugin.instance?.invokeBluetoothMethod("onDiscoveryFinished", null)
+            }
+            else -> {
+                val actionStr = when (intent.action) {
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> "connected"
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> "disconnected"
+                    else -> intent.action ?: "unknown"
+                }
+
+                // Connection state changes
+                HiCarPlugin.instance?.invokeBluetoothMethod("onDeviceConnectionChanged", mapOf(
+                    "address" to deviceAddress,
+                    "action" to actionStr
                 ))
             }
         }
 
         when (intent.action) {
             BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                // Only trigger auto-play if we are in Phone + Bluetooth mode and device matches target address
-                if (connectionMode == "phone_bluetooth" && targetAddress.isNotEmpty() && deviceAddress == targetAddress) {
-                    val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
-                        action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
-                        putExtra("deviceAddress", deviceAddress)
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
+                Log.d("HiCar", "ACL Connected: $deviceAddress")
+                Log.d("HiCar", "Conditions: autoPlayEnabled=$autoPlayEnabled, mode=$connectionMode, target=$targetAddress")
+                
+                if (autoPlayEnabled) {
+                    if (connectionMode == "phone_android_auto") {
+                        // 🟢 AUTO-PLAY (Android Auto): Chủ động phát nhạc ngay khi thấy Bluetooth xe (ko đợi màn hình)
+                        Log.d("HiCar", "AA Mode: Proactive trigger for Bluetooth: $deviceAddress")
+                        val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
+                            action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
+                            putExtra("deviceAddress", deviceAddress)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(serviceIntent)
+                        } else {
+                            context.startService(serviceIntent)
+                        }
+                    } else if (connectionMode == "phone_bluetooth" && targetAddress.isNotEmpty() && deviceAddress.equals(targetAddress, ignoreCase = true)) {
+                        // 🟢 AUTO-PLAY (Bluetooth): Chỉ phát nếu đúng xe mục tiêu
+                        Log.d("HiCar", "Bluetooth Mode: Target Match! Playing audio...")
+                        val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
+                            action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
+                            putExtra("deviceAddress", deviceAddress)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(serviceIntent)
+                        } else {
+                            context.startService(serviceIntent)
+                        }
                     }
                 }
             }
@@ -193,7 +282,11 @@ class BluetoothReceiver : BroadcastReceiver() {
                 val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
                     action = AudioForegroundService.ACTION_BLUETOOTH_DISCONNECTED
                 }
-                context.startService(serviceIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
             }
         }
     }

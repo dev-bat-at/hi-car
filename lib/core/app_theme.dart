@@ -16,10 +16,10 @@ class AppTheme {
         secondary: AppColors.primaryDark,
         surface: AppColors.surface,
         error: AppColors.error,
-        onPrimary: AppColors.background,
-        onSecondary: AppColors.background,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
         onSurface: AppColors.textPrimary,
-        onError: AppColors.textPrimary,
+        onError: Colors.white,
       ),
 
       // AppBar
@@ -58,7 +58,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.background,
+          foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -125,6 +125,16 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.error),
         ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        errorStyle: const TextStyle(
+          color: AppColors.error,
+          fontFamily: 'Roboto',
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
         hintStyle: const TextStyle(
           color: AppColors.textHint,
           fontFamily: 'Roboto',
@@ -157,15 +167,16 @@ class AppTheme {
       // Switch
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return AppColors.primary;
+          if (states.contains(WidgetState.selected)) return Colors.white;
           return AppColors.textHint;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return AppColors.primaryGlow;
+            return AppColors.primary;
           }
           return AppColors.border;
         }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),
 
       // ProgressIndicator

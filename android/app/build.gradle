@@ -32,7 +32,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace "com.hicar.ora.limited"
     compileSdk flutter.compileSdkVersion
-    ndkVersion "29.0.13846066"
+    // ndkVersion "29.0.13846066"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -74,6 +74,7 @@ android {
             // signingConfig signingConfigs.release
             shrinkResources false
             minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

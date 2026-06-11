@@ -1,110 +1,147 @@
-import 'dart:async';
-import '../../core/constants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'api_client.dart';
+import '../../core/api_endpoints.dart';
 
-/// Mock API service - simulates server responses.
-/// Replace with real Dio HTTP calls when backend is ready.
 class ApiService {
   ApiService._();
   static final ApiService instance = ApiService._();
 
-  // Simulate network delay
-  Future<void> _delay([int ms = 800]) =>
-      Future.delayed(Duration(milliseconds: ms));
+  final _client = ApiClient.instance;
 
   // ===== AUTH =====
 
+  /// Đăng nhập bằng mã kích hoạt hoặc số điện thoại.
+  /// API: POST /api/auth/login
   Future<Map<String, dynamic>> login({
-    required String phone,
-    required String password,
+    String? code,
+    String? phone,
+    String? password,
+    Map<String, String>? deviceContext,
   }) async {
-    await _delay(1200);
-    if (phone.isEmpty || password.length < 6) {
-      throw Exception('Số điện thoại hoặc mật khẩu không đúng');
-    }
-    return {
-      'token': 'mock_token_${DateTime.now().millisecondsSinceEpoch}',
-      'user': {
-        'id': 'user_001',
-        'phone': phone,
-        'name': 'Nguyễn Văn A',
-        'license_plate': '51A-12345',
-        'generate_credits': 3,
-        'token': 'mock_token_${DateTime.now().millisecondsSinceEpoch}',
-      },
+    final payload = {
+      if (code != null) 'code': code,
+      if (phone != null) 'phone': phone,
+      if (password != null) 'password': password,
+      ...?deviceContext,
     };
+
+    // Note: Some Laravel servers might redirect without trailing slash or due to www/non-www.
+    // We use the exact path as defined in api.md.
+    final path =
+        phone != null ? ApiEndpoints.loginPhone : ApiEndpoints.loginCode;
+    final response = await _client.post(path, data: payload);
+
+    final data = response.data['data'];
+    final token = data['token'];
+
+    // Save token for persistent auth
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+
+    return data;
   }
 
+  /// Đăng ký tài khoản mới.
   Future<Map<String, dynamic>> signup({
     required String phone,
     required String name,
     required String password,
     required String licensePlate,
   }) async {
-    await _delay(1500);
-    return {
-      'token': 'mock_token_${DateTime.now().millisecondsSinceEpoch}',
-      'user': {
-        'id': 'user_${DateTime.now().millisecondsSinceEpoch}',
-        'phone': phone,
-        'name': name,
-        'license_plate': licensePlate,
-        'generate_credits': AppConstants.defaultGenerateCredits,
-        'token': 'mock_token_new',
-      },
-    };
+    final response = await _client.post(ApiEndpoints.register, data: {
+      'phone': phone,
+      'name': name,
+      'password': password,
+      'license_plate': licensePlate,
+    });
+    return response.data['data'] ?? {};
+  }
+
+  // ===== VEHICLES =====
+
+  /// Lấy danh sách xe khả dụng.
+  /// API: GET /api/vehicles
+  Future<List<dynamic>> getVehicles() async {
+    final response = await _client.get(ApiEndpoints.vehicles, useCache: true);
+    return response.data['data'] ?? [];
+  }
+
+  /// Chọn xe vận hành.
+  /// API: POST /api/vehicles/select
+  Future<void> selectVehicle(int vehicleId) async {
+    await _client
+        .post(ApiEndpoints.selectVehicle, data: {'vehicle_id': vehicleId});
   }
 
   // ===== AUDIO LIST =====
 
-  /// Returns list of audio metadata from server.
-  /// In production: GET /v1/audio
-  Future<List<Map<String, dynamic>>> getAudioList() async {
-    await _delay(1000);
-    return [
-      {
-        'id': 'audio_greeting_default',
-        'title': 'Lời chào - Mặc định',
-        'type': 'greeting',
-        'remote_url': 'mock://audio/greeting_default.mp3',
-        'description': 'Lời chào tự động khi xe khởi động',
-        'duration_seconds': 8,
-      },
-      {
-        'id': 'audio_goodbye_default',
-        'title': 'Lời tạm biệt - Mặc định',
-        'type': 'goodbye',
-        'remote_url': 'mock://audio/goodbye_default.mp3',
-        'description': 'Lời tạm biệt khi tắt xe',
-        'duration_seconds': 6,
-      },
-      {
-        'id': 'audio_greeting_premium',
-        'title': 'Lời chào - Premium',
-        'type': 'greeting',
-        'remote_url': 'mock://audio/greeting_premium.mp3',
-        'description': 'Phiên bản lời chào cao cấp',
-        'duration_seconds': 10,
-      },
-    ];
+  /// Lấy danh sách nhạc đồng bộ.
+  /// API: GET /api/audio/list
+  Future<List<dynamic>> getAudioList() async {
+    final response = await _client.get(ApiEndpoints.audioList);
+    return response.data['data'] ?? [];
   }
 
-  // ===== GENERATE AUDIO =====
+  // ===== STUDIO (VOICE GEN) =====
 
+  /// Lấy danh sách Template, Giọng đọc & Nhạc nền.
+  /// API: GET /api/v1/voice/templates
+  Future<Map<String, dynamic>> getStudioTemplates() async {
+    final response =
+        await _client.get(ApiEndpoints.studioTemplates, useCache: true);
+    return response.data['data'] ?? {};
+  }
+
+  /// Tạo bản nghe thử nháp.
+  /// API: POST /api/v1/voice/preview
+  Future<Map<String, dynamic>> previewVoice(Map<String, dynamic> params) async {
+    final response =
+        await _client.post(ApiEndpoints.studioPreview, data: params);
+    return response.data['data'] ?? {};
+  }
+
+  /// Đặt mua lời chào.
+  /// API: POST /api/v1/orders
+  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> params) async {
+    final response =
+        await _client.post(ApiEndpoints.studioOrders, data: params);
+    return response.data['data'] ?? {};
+  }
+
+  /// Tạo lại đơn hàng (miễn phí trong 24h).
+  /// API: POST /api/v1/orders/{id}/recreate
+  Future<Map<String, dynamic>> recreateOrder(
+      String orderId, Map<String, dynamic> params) async {
+    final response =
+        await _client.post(ApiEndpoints.studioRecreate(orderId), data: params);
+    return response.data['data'] ?? {};
+  }
+
+  /// (Legacy support) Tạo audio từ text.
   Future<Map<String, dynamic>> generateAudio({
     required String ownerName,
     required String licensePlate,
     required String carBrand,
     required String type,
   }) async {
-    await _delay(3000);
-    return {
-      'id': 'audio_gen_${DateTime.now().millisecondsSinceEpoch}',
-      'title': 'Lời chào - $ownerName',
+    final response = await _client.post('/api/audio/generate', data: {
+      'owner_name': ownerName,
+      'license_plate': licensePlate,
+      'car_brand': carBrand,
       'type': type,
-      'remote_url': 'mock://audio/generated_${DateTime.now().millisecondsSinceEpoch}.mp3',
-      'description': 'Đã tạo cho $ownerName · $licensePlate · $carBrand',
-      'duration_seconds': 8,
-    };
+    });
+    return response.data['data'] ?? {};
+  }
+
+  // ===== LOGGING =====
+
+  /// Gửi log lỗi lên server.
+  /// API: POST /api/logs/error
+  Future<void> logError(Map<String, dynamic> errorData) async {
+    try {
+      await _client.post(ApiEndpoints.errorLog, data: errorData);
+    } catch (_) {
+      // Don't throw if logging fails
+    }
   }
 }
-

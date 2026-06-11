@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import '../core/constants.dart';
+import '../core/logger.dart';
 
 /// Flutter → Kotlin bridge for Bluetooth device management
 class BluetoothChannel {
@@ -8,13 +10,71 @@ class BluetoothChannel {
 
   static const _channel = MethodChannel(AppConstants.bluetoothChannel);
 
+  Future<dynamic> Function(String address, String action)? _connectionHandler;
+  Future<dynamic> Function(Map<dynamic, dynamic> device)? _discoveryHandler;
+  VoidCallback? _onDiscoveryFinished;
+
+  void init() {
+    _channel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onDeviceConnectionChanged':
+          final args = call.arguments as Map<dynamic, dynamic>;
+          final address = args['address'] as String;
+          final action = args['action'] as String;
+          AppLogger.instance
+              .log('Bluetooth: $address -> $action', type: 'native_action');
+          await _connectionHandler?.call(address, action);
+          break;
+        case 'onDeviceFound':
+          await _discoveryHandler
+              ?.call(call.arguments as Map<dynamic, dynamic>);
+          break;
+        case 'onDiscoveryFinished':
+          _onDiscoveryFinished?.call();
+          break;
+        case 'onNativeError':
+          final message = call.arguments?.toString() ?? 'Lỗi Bluetooth Native';
+          AppLogger.instance
+              .log('LỖI BLUETOOTH NATIVE: $message', type: 'native_error');
+          break;
+      }
+    });
+  }
+
   /// Returns list of paired Bluetooth devices from Android system
   Future<List<Map<dynamic, dynamic>>> getPairedDevices() async {
     try {
-      final result = await _channel.invokeMethod<List<dynamic>>('getPairedDevices');
+      final result =
+          await _channel.invokeMethod<List<dynamic>>('getPairedDevices');
       return result?.map((e) => e as Map<dynamic, dynamic>).toList() ?? [];
-    } on PlatformException catch (_) {
+    } on PlatformException catch (e) {
+      AppLogger.instance
+          .log('Lỗi Bluetooth getPaired: ${e.message}', type: 'native_error');
       return [];
+    }
+  }
+
+  /// Starts scanning for nearby Bluetooth devices
+  Future<bool> startDiscovery() async {
+    try {
+      final success = await _channel.invokeMethod<bool>('startDiscovery');
+      return success ?? false;
+    } on PlatformException catch (e) {
+      AppLogger.instance.log('Lỗi Bluetooth startDiscovery: ${e.message}',
+          type: 'native_error');
+      return false;
+    }
+  }
+
+  /// Stops scanning for nearby Bluetooth devices
+  Future<bool> stopDiscovery() async {
+    try {
+      final success = await _channel.invokeMethod<bool>('stopDiscovery');
+      return success ?? false;
+    } on PlatformException catch (e) {
+      AppLogger.instance.log('Lỗi Bluetooth stopDiscovery: ${e.message}',
+          type: 'native_error');
+      return false;
     }
   }
 
@@ -28,22 +88,31 @@ class BluetoothChannel {
         'address': address,
         'delay': delay,
       });
-    } on PlatformException catch (_) {}
+    } on PlatformException catch (e) {
+      AppLogger.instance
+          .log('Lỗi Bluetooth setTarget: ${e.message}', type: 'native_error');
+    }
   }
 
   /// Clears the target device (disables auto-play)
   Future<void> clearTargetDevice() async {
     try {
       await _channel.invokeMethod('clearTargetDevice');
-    } on PlatformException catch (_) {}
+    } on PlatformException catch (e) {
+      AppLogger.instance
+          .log('Lỗi Bluetooth clearTarget: ${e.message}', type: 'native_error');
+    }
   }
 
   /// Initiates A2DP/Headset connection via reflection
   Future<bool> connectDevice(String address) async {
     try {
-      final success = await _channel.invokeMethod<bool>('connectDevice', {'address': address});
+      final success = await _channel
+          .invokeMethod<bool>('connectDevice', {'address': address});
       return success ?? false;
-    } on PlatformException catch (_) {
+    } on PlatformException catch (e) {
+      AppLogger.instance
+          .log('Lỗi Bluetooth connect: ${e.message}', type: 'native_error');
       return false;
     }
   }
@@ -51,9 +120,12 @@ class BluetoothChannel {
   /// Initiates A2DP/Headset disconnection via reflection
   Future<bool> disconnectDevice(String address) async {
     try {
-      final success = await _channel.invokeMethod<bool>('disconnectDevice', {'address': address});
+      final success = await _channel
+          .invokeMethod<bool>('disconnectDevice', {'address': address});
       return success ?? false;
-    } on PlatformException catch (_) {
+    } on PlatformException catch (e) {
+      AppLogger.instance
+          .log('Lỗi Bluetooth disconnect: ${e.message}', type: 'native_error');
       return false;
     }
   }
@@ -62,18 +134,21 @@ class BluetoothChannel {
   Future<void> setConnectionMode(String mode) async {
     try {
       await _channel.invokeMethod('setConnectionMode', {'mode': mode});
-    } on PlatformException catch (_) {}
+    } on PlatformException catch (e) {
+      AppLogger.instance
+          .log('Lỗi Bluetooth setMode: ${e.message}', type: 'native_error');
+    }
   }
 
-  /// Sets up native-to-Flutter callback for connection changes
-  void setConnectionChangeHandler(Future<dynamic> Function(String address, String action) handler) {
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onDeviceConnectionChanged') {
-        final args = call.arguments as Map<dynamic, dynamic>;
-        final address = args['address'] as String;
-        final action = args['action'] as String;
-        await handler(address, action);
-      }
-    });
+  void setConnectionChangeHandler(
+      Future<dynamic> Function(String address, String action) handler) {
+    _connectionHandler = handler;
+  }
+
+  void setDiscoveryHandler(
+      Future<dynamic> Function(Map<dynamic, dynamic> device) onDeviceFound,
+      VoidCallback onFinished) {
+    _discoveryHandler = onDeviceFound;
+    _onDiscoveryFinished = onFinished;
   }
 }

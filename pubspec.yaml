@@ -25,7 +25,6 @@ dependencies:
 
   # Audio
   just_audio: ^0.9.42
-  audio_service: ^0.18.15
 
   # Network
   dio: ^5.7.0
@@ -45,6 +44,8 @@ dependencies:
 
   # Utils
   intl: ^0.19.0
+  device_info_plus: ^12.4.0
+  flutter_easyloading: ^3.0.5
 
 dev_dependencies:
   flutter_test:

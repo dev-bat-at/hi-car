@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/utils/device_utils.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../../core/constants.dart';
@@ -6,24 +7,6 @@ import '../../core/constants.dart';
 class AuthRepository {
   AuthRepository._();
   static final AuthRepository instance = AuthRepository._();
-
-  // ===== Login =====
-
-  Future<UserModel> login({
-    required String phone,
-    required String password,
-  }) async {
-    final response = await ApiService.instance.login(
-      phone: phone,
-      password: password,
-    );
-
-    final user = UserModel.fromJson(response['user'] as Map<String, dynamic>);
-    await _saveUser(user);
-    return user;
-  }
-
-  // ===== Signup =====
 
   Future<UserModel> signup({
     required String phone,
@@ -38,7 +21,28 @@ class AuthRepository {
       licensePlate: licensePlate,
     );
 
-    final user = UserModel.fromJson(response['user'] as Map<String, dynamic>);
+    final user =
+        UserModel.fromJson(response['driver'] ?? response['user'] ?? response);
+    await _saveUser(user);
+    return user;
+  }
+
+  Future<UserModel> login({
+    String? code,
+    String? phone,
+    String? password,
+  }) async {
+    // Collect real device info using utility
+    final deviceContext = await DeviceUtils.GetDeviceContext();
+
+    final response = await ApiService.instance.login(
+      code: code,
+      phone: phone,
+      password: password,
+      deviceContext: deviceContext,
+    );
+
+    final user = UserModel.fromJson(response);
     await _saveUser(user);
     return user;
   }
@@ -47,8 +51,22 @@ class AuthRepository {
 
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    // Auth & User
     await prefs.remove(AppConstants.keyAuthToken);
     await prefs.remove(AppConstants.keyUserData);
+
+    // Audio Metadata
+    await prefs.remove(AppConstants.keyAudioList);
+    await prefs.remove('cached_audio_list');
+
+    // Audio Selection
+    await prefs.remove(AppConstants.keyGreetingAudioId);
+    await prefs.remove(AppConstants.keyGoodbyeAudioId);
+    await prefs.remove('greeting_audio_path');
+    await prefs.remove('goodbye_audio_path');
+
+    // Others
+    await prefs.remove(AppConstants.keyLastSyncTime);
   }
 
   // ===== Check Auth =====
@@ -69,10 +87,8 @@ class AuthRepository {
     }
   }
 
-  // ===== Delete Account =====
-
   Future<void> deleteAccount() async {
-    // TODO: Call API to delete account when backend ready
+    // Note: Implementation usually calls an API to delete data then log out.
     await logout();
   }
 
@@ -80,7 +96,9 @@ class AuthRepository {
 
   Future<void> _saveUser(UserModel user) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.keyAuthToken, user.token ?? '');
+    if (user.token != null) {
+      await prefs.setString(AppConstants.keyAuthToken, user.token!);
+    }
     await prefs.setString(AppConstants.keyUserData, user.toJsonString());
   }
 }

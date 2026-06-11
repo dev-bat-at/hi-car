@@ -1,24 +1,14 @@
+import 'dart:isolate';
+import 'dart:ui';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-Future<void> _reportOverlayError(String message) async {
-  debugPrint('Overlay error: $message');
-  try {
-    await FlutterOverlayWindow.shareData({
-      'type': 'overlay_error',
-      'message': message,
-    });
-  } catch (_) {}
-}
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    _reportOverlayError(details.exceptionAsString());
-  };
   runApp(const OverlayApp());
 }
 
@@ -30,505 +20,402 @@ class OverlayApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
-      home: const OverlayBubble(),
+      home: const OverlayStrip(),
     );
   }
 }
 
-class OverlayBubble extends StatefulWidget {
-  const OverlayBubble({super.key});
+class OverlayStrip extends StatefulWidget {
+  const OverlayStrip({super.key});
 
   @override
-  State<OverlayBubble> createState() => _OverlayBubbleState();
+  State<OverlayStrip> createState() => _OverlayStripState();
 }
 
-class _OverlayBubbleState extends State<OverlayBubble>
-    with SingleTickerProviderStateMixin {
-  static const double _compactSize = 84.0;
-  static const double _expandedWidth = 276.0;
-  static const double _expandedHeight = 212.0;
-  static const double _bubbleDockWidth = 84.0;
-  static const double _panelTopInset = 6.0;
-  static const double _edgePadding = 8.0;
-  static const double _topPadding = 60.0;
-  static const double _bottomPadding = 32.0;
+class _OverlayStripState extends State<OverlayStrip> {
+  static const Color _neonCyan = Color(0xFF00FBFF);
+  static const Color _neonBlue = Color(0xFF007BFF);
+  bool _isGreetingPlaying = false;
+  bool _isGoodbyePlaying = false;
+  String? _errorMessage;
+  BoxShape _currentShape = BoxShape.circle;
 
-  static const Color _cyan = Color(0xFF00E5FF);
-  static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _red = Color(0xFFFF3D71);
+  SendPort? homePort;
 
-  bool _expanded = false;
-  bool _bubbleOnLeft = true;
-  bool _isTransitioning = false;
-  Offset _windowPosition = const Offset(_edgePadding, 180.0);
-
-  late final AnimationController _animController;
-  late final Animation<double> _expandAnim;
+  int _toPhysicalPixels(double logicalSize) {
+    final ratio = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+    return (logicalSize * ratio).round();
+  }
 
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 160),
-    );
-    _expandAnim = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    );
-    _initOverlaySize();
-  }
-
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
-
-  double get _deviceRatio {
-    final views = ui.PlatformDispatcher.instance.views;
-    return views.isNotEmpty ? views.first.devicePixelRatio : 3.0;
-  }
-
-  double get _screenWidth {
-    final views = ui.PlatformDispatcher.instance.views;
-    return views.isNotEmpty
-        ? (views.first.physicalSize.width / _deviceRatio)
-        : 390.0;
-  }
-
-  double get _screenHeight {
-    final views = ui.PlatformDispatcher.instance.views;
-    return views.isNotEmpty
-        ? (views.first.physicalSize.height / _deviceRatio)
-        : 844.0;
-  }
-
-  int _toOverlayUnit(double logical) => logical.round();
-
-  Future<void> _initOverlaySize() async {
-    await _syncWindowPosition(
-      width: _compactSize,
-      height: _compactSize,
-      useFallback: true,
-    );
-    await _applyCompactWindow();
-  }
-
-  Future<void> _syncWindowPosition({
-    required double width,
-    required double height,
-    bool useFallback = false,
-  }) async {
-    try {
-      final pos = await FlutterOverlayWindow.getOverlayPosition();
-      Offset next = Offset(pos.x, pos.y);
-      if (next == Offset.zero && useFallback) {
-        next = const Offset(_edgePadding, 180.0);
+    // Listen for data from the main app if needed
+    FlutterOverlayWindow.overlayListener.listen((data) {
+      if (data is Map && data['type'] == 'state_update') {
+        setState(() {
+          if (data['isGreetingPlaying'] != null) {
+            _isGreetingPlaying = data['isGreetingPlaying'];
+          }
+          if (data['isGoodbyePlaying'] != null) {
+            _isGoodbyePlaying = data['isGoodbyePlaying'];
+          }
+          if (data['errorMessage'] != null) {
+            _showToast(data['errorMessage']);
+          }
+        });
       }
-      _windowPosition = _clampPosition(next, width, height);
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      debugPrint('Overlay position sync failed: $e');
-    }
+    });
   }
 
-  Offset _clampPosition(Offset position, double width, double height) {
-    final maxX =
-        (_screenWidth - width - _edgePadding).clamp(_edgePadding, double.infinity);
-    final maxY =
-        (_screenHeight - height - _bottomPadding).clamp(_topPadding, double.infinity);
-    return Offset(
-      position.dx.clamp(_edgePadding, maxX),
-      position.dy.clamp(_topPadding, maxY),
-    );
-  }
-
-  Offset _snapCompactPosition(Offset position) {
-    final snapX = position.dx + (_compactSize / 2) < _screenWidth / 2
-        ? _edgePadding
-        : _screenWidth - _compactSize - _edgePadding;
-    return _clampPosition(
-      Offset(snapX, position.dy),
-      _compactSize,
-      _compactSize,
-    );
-  }
-
-  Future<void> _moveOverlay(Offset position) async {
-    await FlutterOverlayWindow.moveOverlay(
-      OverlayPosition(
-        _toOverlayUnit(position.dx).toDouble(),
-        _toOverlayUnit(position.dy).toDouble(),
-      ),
-    );
-  }
-
-  Future<void> _applyCompactWindow() async {
-    try {
-      await FlutterOverlayWindow.resizeOverlay(
-        _toOverlayUnit(_compactSize),
-        _toOverlayUnit(_compactSize),
-        true,
-      );
-      await _moveOverlay(_windowPosition);
-    } catch (e) {
-      debugPrint('Overlay compact resize failed: $e');
-    }
-  }
-
-  Future<void> _expandOverlay() async {
-    if (_isTransitioning) return;
-    _isTransitioning = true;
-
-    await _syncWindowPosition(
-      width: _compactSize,
-      height: _compactSize,
-      useFallback: true,
-    );
-
-    final compactPosition = _snapCompactPosition(_windowPosition);
-    _bubbleOnLeft = compactPosition.dx + (_compactSize / 2) < _screenWidth / 2;
-
-    final expandedX = _bubbleOnLeft
-        ? compactPosition.dx
-        : compactPosition.dx - (_expandedWidth - _compactSize);
-    final expandedY = compactPosition.dy;
-
-    _windowPosition = _clampPosition(
-      Offset(expandedX, expandedY),
-      _expandedWidth,
-      _expandedHeight,
-    );
-
-    try {
-      await FlutterOverlayWindow.resizeOverlay(
-        _toOverlayUnit(_expandedWidth),
-        _toOverlayUnit(_expandedHeight),
-        true,
-      );
-      await _moveOverlay(_windowPosition);
-      if (mounted) {
-        setState(() => _expanded = true);
-      }
-      await _animController.forward(from: 0);
-    } catch (e) {
-      debugPrint('Overlay expand failed: $e');
-      await _applyCompactWindow();
-    } finally {
-      _isTransitioning = false;
-    }
-  }
-
-  Future<void> _collapseOverlay() async {
-    if (_isTransitioning) return;
-    _isTransitioning = true;
-
-    await _syncWindowPosition(
-      width: _expandedWidth,
-      height: _expandedHeight,
-    );
-
-    try {
-      await _animController.reverse();
-    } catch (_) {}
-
-    final compactX = _bubbleOnLeft
-        ? _windowPosition.dx
-        : _windowPosition.dx + (_expandedWidth - _compactSize);
-    final compactY = _windowPosition.dy;
-
-    _windowPosition = _snapCompactPosition(Offset(compactX, compactY));
-
-    if (mounted) {
-      setState(() => _expanded = false);
-    }
-
-    await _applyCompactWindow();
-    _isTransitioning = false;
-  }
-
-  Future<void> _toggleExpand() async {
-    if (_expanded) {
-      await _collapseOverlay();
-    } else {
-      await _expandOverlay();
-    }
+  void _showToast(String message) {
+    setState(() => _errorMessage = message);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _errorMessage = null);
+    });
   }
 
   Future<void> _sendAction(String action) async {
-    await FlutterOverlayWindow.shareData({'action': action});
-    if (_expanded) {
-      await _collapseOverlay();
+    try {
+      final SendPort? sendPort =
+          IsolateNameServer.lookupPortByName('overlay_action_port');
+      if (sendPort != null) {
+        sendPort.send({'action': action});
+        print('Overlay: Đã gửi thành công action [$action] qua Isolate');
+      } else {
+        print(
+            'Overlay: Không tìm thấy cổng overlay_action_port. Có thể main app chưa đăng ký.');
+      }
+    } catch (e) {
+      print('Overlay: Lỗi khi gửi action qua Isolate: $e');
     }
   }
 
-  Future<void> _hideOverlay() async {
-    try {
-      await FlutterOverlayWindow.closeOverlay();
-    } catch (_) {}
+  Future<void> _toggleGreeting() async {
+    // Không tự setState ở đây, để Main App điều khiển qua listener
+    await _sendAction(_isGreetingPlaying ? 'stop_audio' : 'play_greeting');
+  }
+
+  Future<void> _toggleGoodbye() async {
+    // Không tự setState ở đây, để Main App điều khiển qua listener
+    await _sendAction(_isGoodbyePlaying ? 'stop_audio' : 'play_goodbye');
+  }
+
+  Future<void> _openApp() async {
+    await _sendAction('open_app');
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_expanded) {
-      return Material(
-        color: Colors.transparent,
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: _toggleExpand,
-          child: const Center(
-            child: _BubbleShell(isExpanded: false),
-          ),
-        ),
-      );
-    }
-
     return Material(
       color: Colors.transparent,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: _collapseOverlay,
-        onPanStart: (_) => _collapseOverlay(),
-        child: SizedBox(
-          width: _expandedWidth,
-          height: _expandedHeight,
-          child: Stack(
-            children: [
-              Positioned(
-                left: _bubbleOnLeft ? 0 : _expandedWidth - _bubbleDockWidth,
-                top: _panelTopInset,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _collapseOverlay,
-                  child: const _BubbleShell(isExpanded: true),
+      elevation: 0.0,
+      child: Stack(
+        children: [
+          // 1. Background layer
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(48),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(48),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1.2,
+                    ),
+                  ),
                 ),
               ),
-              Positioned(
-                left: _bubbleOnLeft ? 62.0 : 0.0,
-                top: _panelTopInset,
-                child: _buildMenuCard(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuCard() {
-    return ScaleTransition(
-      scale: _expandAnim,
-      child: FadeTransition(
-        opacity: _expandAnim,
-        child: Container(
-          width: 206.0,
-          height: 190.0,
-          padding: const EdgeInsets.all(12.0),
-          decoration: BoxDecoration(
-            color: _bg.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(18.0),
-            border: Border.all(
-              color: _cyan.withValues(alpha: 0.35),
-              width: 1.2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: _cyan.withValues(alpha: 0.16),
-                blurRadius: 12.0,
-                spreadRadius: 1.0,
-              ),
-            ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 5.0,
-                    height: 14.0,
-                    decoration: BoxDecoration(
-                      color: _cyan,
-                      borderRadius: BorderRadius.circular(3.0),
-                    ),
-                  ),
-                  const SizedBox(width: 8.0),
-                  const Expanded(
-                    child: Text(
-                      'GIỌNG THƯƠNG GIA',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _collapseOverlay,
-                    child: Container(
-                      width: 26.0,
-                      height: 26.0,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: 16.0,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10.0),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildMenuItem(
-                        icon: Icons.waving_hand_rounded,
-                        label: 'Phat loi chao',
-                        color: _cyan,
-                        onTap: () => _sendAction('play_greeting'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.directions_car_rounded,
-                        label: 'Phat tam biet',
-                        color: const Color(0xFF00E676),
-                        onTap: () => _sendAction('play_goodbye'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.stop_circle_rounded,
-                        label: 'Dung am thanh',
-                        color: _red,
-                        onTap: () => _sendAction('stop_audio'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.open_in_new_rounded,
-                        label: 'Mo ung dung',
-                        color: Colors.white,
-                        onTap: () => _sendAction('open_app'),
-                      ),
-                      const SizedBox(height: 6.0),
-                      _buildMenuItem(
-                        icon: Icons.visibility_off_rounded,
-                        label: 'An bong bong',
-                        color: const Color(0xFFFFB74D),
-                        onTap: _hideOverlay,
-                      ),
-                    ],
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () async {
+                if (_currentShape == BoxShape.rectangle) {
+                  await FlutterOverlayWindow.resizeOverlay(
+                    _toPhysicalPixels(80),
+                    _toPhysicalPixels(
+                        250), // Standard size from OverlayProvider
+                    true,
+                  );
+                  setState(() {
+                    _currentShape = BoxShape.circle;
+                  });
+                } else {
+                  await FlutterOverlayWindow.resizeOverlay(
+                    WindowSize.matchParent,
+                    WindowSize.matchParent,
+                    false,
+                  );
+                  setState(() {
+                    _currentShape = BoxShape.rectangle;
+                  });
+                }
+              },
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+          // 2. Buttons layer
+          Positioned.fill(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                const SizedBox(height: 4),
+                Expanded(
+                  child: _buildNeonButton(
+                    icon: _isGreetingPlaying
+                        ? Icons.stop_rounded
+                        : Icons.waving_hand_rounded,
+                    iconColor: _isGreetingPlaying ? _neonCyan : Colors.white,
+                    isGlow: _isGreetingPlaying,
+                    onTap: _toggleGreeting,
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: _buildNeonButton(
+                    icon: _isGoodbyePlaying
+                        ? Icons.stop_rounded
+                        : Icons.directions_car_rounded,
+                    iconColor: _isGoodbyePlaying ? _neonCyan : Colors.white,
+                    isGlow: _isGoodbyePlaying,
+                    onTap: _toggleGoodbye,
+                  ),
+                ),
+                Expanded(
+                  child: _buildNeonButton(
+                    icon: Icons.grid_view_rounded,
+                    iconColor: Colors.white,
+                    isGlow: false,
+                    onTap: _openApp,
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
+            ),
           ),
-        ),
+          // if (_errorMessage != null)
+          //   Positioned(
+          //     left: 4,
+          //     bottom: 4,
+          //     right: 4,
+          //     child: AnimatedOpacity(
+          //       opacity: _errorMessage != null ? 1.0 : 0.0,
+          //       duration: const Duration(milliseconds: 300),
+          //       child: Container(
+          //         padding:
+          //             const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          //         decoration: BoxDecoration(
+          //           color: Colors.black87,
+          //           borderRadius: BorderRadius.circular(12),
+          //           border:
+          //               Border.all(color: Colors.redAccent.withOpacity(0.5)),
+          //         ),
+          //         child: Text(
+          //           _errorMessage!,
+          //           style: const TextStyle(
+          //               color: Colors.redAccent,
+          //               fontSize: 8,
+          //               fontWeight: FontWeight.bold),
+          //           textAlign: TextAlign.center,
+          //           maxLines: 2,
+          //         ),
+          //       ),
+          //     ),
+          //   ),
+        ],
       ),
     );
   }
 
-  Widget _buildMenuItem({
+  Widget _buildNeonButton({
     required IconData icon,
-    required String label,
-    required Color color,
+    required Color iconColor,
+    required bool isGlow,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return _OverlayScaleButton(
       onTap: onTap,
-      child: Container(
-        height: 26.0,
-        padding: const EdgeInsets.symmetric(horizontal: 10.0),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(10.0),
-          border: Border.all(
-            color: color.withValues(alpha: 0.16),
-            width: 1.0,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 16.0),
-            const SizedBox(width: 8.0),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.0,
-                  fontWeight: FontWeight.w600,
+      child: Center(
+        child: ClipOval(
+          child: Material(
+            color: Color(0xFF083C26),
+            child: InkWell(
+              onTap: onTap,
+              splashColor: iconColor.withOpacity(0.3),
+              child: Container(
+                width: 65,
+                height: 65,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: isGlow
+                      ? LinearGradient(
+                          colors: [
+                            _neonCyan.withOpacity(0.2),
+                            _neonBlue.withOpacity(0.4)
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  border: Border.all(
+                    color: isGlow ? _neonCyan : Colors.white.withOpacity(0.15),
+                    width: 1.2,
+                  ),
+                ),
+                child: _PulseWrapper(
+                  key: ValueKey('pulse_$isGlow'),
+                  isGlow: isGlow,
+                  iconColor: iconColor,
+                  child: Center(
+                    key: ValueKey('icon_$isGlow'),
+                    child: Icon(
+                      icon,
+                      color: iconColor,
+                      size: 30,
+                      shadows: isGlow
+                          ? [
+                              Shadow(color: iconColor, blurRadius: 10),
+                            ]
+                          : null,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _BubbleShell extends StatelessWidget {
-  final bool isExpanded;
+class _PulseWrapper extends StatefulWidget {
+  final bool isGlow;
+  final Color iconColor;
+  final Widget child;
 
-  const _BubbleShell({
-    required this.isExpanded,
+  const _PulseWrapper({
+    super.key,
+    required this.isGlow,
+    required this.iconColor,
+    required this.child,
   });
 
-  static const Color _cyan = Color(0xFF00E5FF);
-  static const Color _bg = Color(0xFF0A0A0A);
+  @override
+  State<_PulseWrapper> createState() => _PulseWrapperState();
+}
+
+class _PulseWrapperState extends State<_PulseWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    if (widget.isGlow) _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_PulseWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isGlow != oldWidget.isGlow) {
+      if (widget.isGlow) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+        _controller.value = 0;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 84.0,
-      height: 84.0,
-      child: Center(
-        child: Container(
-          width: 62.0,
-          height: 62.0,
-          decoration: BoxDecoration(
-            color: _bg.withValues(alpha: 0.96),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: _cyan.withValues(alpha: 0.8),
-              width: 1.6,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: _cyan.withValues(alpha: 0.26),
-                blurRadius: 10.0,
-                spreadRadius: 1.0,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 50.0,
-              height: 50.0,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Color(0xFF00E5FF), Color(0xFF00838F)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    if (!widget.isGlow) return widget.child;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: 1.0 + (0.1 * _controller.value), // Icon to ra 10% theo nhịp
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: widget.iconColor.withOpacity(0.5 * _controller.value),
+                  blurRadius: 15 * _controller.value,
+                  spreadRadius: 5 * _controller.value,
                 ),
-              ),
-              child: Icon(
-                isExpanded ? Icons.close_rounded : Icons.volume_up_rounded,
-                color: Colors.black,
-                size: 24.0,
-              ),
+              ],
             ),
+            child: child,
           ),
-        ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+class _OverlayScaleButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  const _OverlayScaleButton({required this.child, required this.onTap});
+
+  @override
+  State<_OverlayScaleButton> createState() => _OverlayScaleButtonState();
+}
+
+class _OverlayScaleButtonState extends State<_OverlayScaleButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        _controller.forward().then((_) => _controller.reverse());
+        HapticFeedback.lightImpact();
+        widget.onTap();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: widget.child,
       ),
     );
   }
