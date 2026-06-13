@@ -45,5 +45,16 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Cho phép phát âm thanh khi app chạy nền (cần cho Shortcut/CarPlay tự phát lời chào) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<!-- Cho phép gọi hành động qua Siri / Phím tắt (App Intents) -->
+	<key>NSSiriUsageDescription</key>
+	<string>Cho phép dùng Siri và Phím tắt để phát lời chào/tạm biệt khi bạn lên xe.</string>
+	<!-- flutter_blue_plus được liên kết sẵn; iOS yêu cầu mô tả này nếu app truy cập Bluetooth -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Ứng dụng dùng Bluetooth để nhận biết khi điện thoại kết nối với xe.</string>
 </dict>
 </plist>

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
@@ -35,8 +37,13 @@ class SettingsProvider extends ChangeNotifier {
     _bluetoothAutoPlay = prefs.getBool('bluetooth_auto_play') ?? true;
     _androidAutoEnabled = prefs.getBool('android_auto_enabled') ?? true;
     _showNotification = prefs.getBool('show_notification') ?? true;
-    _connectionMode =
-        prefs.getString('connection_mode') ?? 'android_screen_mode';
+    // iOS chỉ có duy nhất chế độ CarPlay; Android giữ mặc định màn hình độ.
+    if (Platform.isIOS) {
+      _connectionMode = AppConstants.iosCarplayMode;
+    } else {
+      _connectionMode =
+          prefs.getString('connection_mode') ?? 'android_screen_mode';
+    }
     _playOnOpen = prefs.getBool('play_on_open') ?? true;
     _isBetaMode = prefs.getBool('is_beta_mode') ?? false;
 
