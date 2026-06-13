@@ -125,6 +125,16 @@ class ServiceChannel {
     }
   }
 
+  /// Mở màn hình "Tối ưu hoá pin" của hệ thống để người dùng tự tắt cho app.
+  /// Cách hợp lệ với Google Play (không dùng hộp thoại cấp quyền trực tiếp).
+  Future<void> showBatteryOptimizationSettings() async {
+    try {
+      await _channel.invokeMethod('showBatteryOptimizationSettings');
+    } catch (e) {
+      debugPrint('ServiceChannel: showBatteryOptimizationSettings error: $e');
+    }
+  }
+
   Future<void> minimizeApp() async {
     try {
       await _channel.invokeMethod('minimizeApp');

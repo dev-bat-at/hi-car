@@ -79,6 +79,13 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
     }
   }
 
+  // ⚠️ TUÂN THỦ CHÍNH SÁCH STORE (Apple 3.1.1 / Google Play Payments):
+  //    Không được bán nội dung số (file lời chào) bằng cổng thanh toán ngoài
+  //    (VietQR/chuyển khoản) ngay trong app. Việc mua bán được xử lý bên ngoài
+  //    qua admin. Toàn bộ luồng đặt mua + thanh toán bên dưới được tạm ẩn để
+  //    nộp lên CH Play / App Store. Logic backend (createOrder) vẫn còn nguyên,
+  //    chỉ ẩn UI ở client. Bỏ comment nếu phát hành ngoài store.
+  /*
   Future<void> _submitOrder() async {
     final studio = context.read<StudioProvider>();
     if (!studio.canOrder) {
@@ -153,6 +160,7 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
       ),
     );
   }
+  */
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -821,6 +829,11 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
           ),
         ],
 
+        // ⚠️ TUÂN THỦ CHÍNH SÁCH STORE: nút "Đặt mua" + thanh toán VietQR bị ẩn
+        //    cho bản phát hành CH Play / App Store (cấm bán nội dung số qua cổng
+        //    ngoài). Khách mua qua admin; admin gán file vào tài khoản. Bỏ comment
+        //    nếu phát hành ngoài store.
+        /*
         // Order button (only when preview exists)
         if (studio.canOrder) ...[
           SizedBox(height: 12.h),
@@ -858,6 +871,7 @@ class _GenAudioScreenState extends State<GenAudioScreen> {
             ),
           ),
         ],
+        */
       ],
     );
   }

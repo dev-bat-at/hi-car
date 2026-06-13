@@ -146,6 +146,10 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 showAutostartSettings()
                 result.success(true)
             }
+            "showBatteryOptimizationSettings" -> {
+                showBatteryOptimizationSettings()
+                result.success(true)
+            }
             "syncPrefs" -> {
                 syncPrefsToDeviceProtected()
                 syncFilesToDeviceProtected()
@@ -292,6 +296,26 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         intent.addCategory(Intent.CATEGORY_HOME)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         context.startActivity(intent)
+    }
+
+    /**
+     * Mở màn hình "Tối ưu hoá pin" của hệ thống (danh sách app) để người dùng TỰ tắt
+     * tối ưu pin cho app. Dùng ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS — KHÔNG cần
+     * quyền REQUEST_IGNORE_BATTERY_OPTIMIZATIONS và hợp lệ với chính sách Google Play
+     * (khác với hộp thoại cấp trực tiếp ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).
+     */
+    private fun showBatteryOptimizationSettings() {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            // Fallback: mở trang chi tiết ứng dụng nếu thiết bị không có màn hình trên.
+            val fallback = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            fallback.data = android.net.Uri.fromParts("package", context.packageName, null)
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try { context.startActivity(fallback) } catch (_: Exception) {}
+        }
     }
 
     private fun handleBluetoothCall(call: MethodCall, result: Result) {

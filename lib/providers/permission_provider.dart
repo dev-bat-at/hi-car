@@ -128,10 +128,16 @@ class PermissionProvider extends ChangeNotifier {
     return _status.overlay;
   }
 
+  /// Mở màn hình Cài đặt "Tối ưu hoá pin" để người dùng tự tắt cho app.
+  /// ⚠️ TUÂN THỦ CHÍNH SÁCH PLAY: không dùng hộp thoại cấp quyền trực tiếp
+  ///    (Permission.ignoreBatteryOptimizations.request) vì Google hạn chế. App
+  ///    vẫn ĐỌC được trạng thái qua Permission.ignoreBatteryOptimizations.status.
   Future<bool> requestBatteryOptimizationPermission() async {
-    final result = await Permission.ignoreBatteryOptimizations.request();
+    if (Platform.isAndroid) {
+      await ServiceChannel.instance.showBatteryOptimizationSettings();
+    }
     await checkAllPermissions();
-    return result.isGranted;
+    return _status.batteryOptimization;
   }
 
   Future<bool> requestBackgroundExecutionPermissions() async {
@@ -163,7 +169,8 @@ class PermissionProvider extends ChangeNotifier {
       }
     } else if (mode == 'android_box_mode') {
       await Permission.notification.request();
-      await Permission.ignoreBatteryOptimizations.request();
+      // ⚠️ Mở Cài đặt tối ưu pin thay vì hộp thoại cấp trực tiếp (chính sách Play).
+      await ServiceChannel.instance.showBatteryOptimizationSettings();
       if (!_status.overlay) {
         await FlutterOverlayWindow.requestPermission();
       }
