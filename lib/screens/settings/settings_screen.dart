@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:provider/provider.dart';
@@ -12,8 +13,30 @@ import '../../data/services/api_client.dart';
 import '../../core/logger.dart';
 import 'package:intl/intl.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = info.version;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,7 +137,7 @@ class SettingsScreen extends StatelessWidget {
                             SizedBox(height: 32.h),
                             Center(
                               child: Text(
-                                'Giọng Thương Gia v1.0.0',
+                                'Giọng Thương Gia v$_appVersion',
                                 style: TextStyle(
                                   color: AppColors.textHint,
                                   fontSize: 9.sp,
@@ -194,7 +217,7 @@ class SettingsScreen extends StatelessWidget {
                   SizedBox(height: 20.h),
                   Center(
                     child: Text(
-                      'Giọng Thương Gia v1.0.0 (Limited Edition)',
+                      'Giọng Thương Gia v$_appVersion (Limited Edition)',
                       style: TextStyle(
                         color: AppColors.textHint,
                         fontSize: 11.sp,

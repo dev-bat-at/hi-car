@@ -143,6 +143,26 @@ class ServiceChannel {
     }
   }
 
+  Future<void> clearGreetingConfig() async {
+    try {
+      await _channel.invokeMethod('clearGreetingConfig');
+    } on PlatformException catch (e) {
+      debugPrint('ServiceChannel: clearGreetingConfig error: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('ServiceChannel: clearGreetingConfig missing plugin: $e');
+    }
+  }
+
+  Future<void> clearGoodbyeConfig() async {
+    try {
+      await _channel.invokeMethod('clearGoodbyeConfig');
+    } on PlatformException catch (e) {
+      debugPrint('ServiceChannel: clearGoodbyeConfig error: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('ServiceChannel: clearGoodbyeConfig missing plugin: $e');
+    }
+  }
+
   Future<void> syncPrefs() async {
     try {
       await _channel.invokeMethod('syncPrefs');

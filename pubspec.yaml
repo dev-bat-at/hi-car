@@ -2,7 +2,7 @@ name: hi_car
 description: "Giọng Thương Gia - Automotive Audio Background System"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.2+2
 
 environment:
   sdk: ">=3.2.3 <4.0.0"
@@ -46,6 +46,7 @@ dependencies:
   intl: ^0.19.0
   device_info_plus: ^12.4.0
   flutter_easyloading: ^3.0.5
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

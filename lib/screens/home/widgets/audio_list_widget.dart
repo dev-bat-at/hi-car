@@ -287,9 +287,17 @@ class _AudioActions extends StatelessWidget {
             await provider.setAsGreeting(audio.id);
             _showSnack(context, 'Đã đặt làm lời chào ✓');
             break;
+          case 'unset_greeting':
+            await provider.unsetGreeting();
+            _showSnack(context, 'Đã bỏ làm lời chào');
+            break;
           case 'set_goodbye':
             await provider.setAsGoodbye(audio.id);
             _showSnack(context, 'Đã đặt làm lời tạm biệt ✓');
+            break;
+          case 'unset_goodbye':
+            await provider.unsetGoodbye();
+            _showSnack(context, 'Đã bỏ làm lời tạm biệt');
             break;
           case 'delete':
             await provider.deleteAudio(audio.id);
@@ -304,15 +312,20 @@ class _AudioActions extends StatelessWidget {
             label: isPlaying ? 'Dừng' : 'Nghe thử',
           ),
         _popupItem(
-          value: 'set_greeting',
-          icon: Icons.waving_hand_rounded,
-          label: 'Đặt làm lời chào',
+          value: audio.isActiveGreeting ? 'unset_greeting' : 'set_greeting',
+          icon: audio.isActiveGreeting
+              ? Icons.do_not_disturb_on_outlined
+              : Icons.waving_hand_rounded,
+          label: audio.isActiveGreeting ? 'Bỏ làm lời chào' : 'Đặt làm lời chào',
           color: AppColors.primary,
         ),
         _popupItem(
-          value: 'set_goodbye',
-          icon: Icons.directions_car_rounded,
-          label: 'Đặt làm tạm biệt',
+          value: audio.isActiveGoodbye ? 'unset_goodbye' : 'set_goodbye',
+          icon: audio.isActiveGoodbye
+              ? Icons.do_not_disturb_on_outlined
+              : Icons.directions_car_rounded,
+          label:
+              audio.isActiveGoodbye ? 'Bỏ làm tạm biệt' : 'Đặt làm tạm biệt',
           color: AppColors.success,
         ),
         _popupItem(

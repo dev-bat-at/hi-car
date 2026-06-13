@@ -40,8 +40,37 @@ class MainActivity : FlutterActivity() {
         instance = this
     }
 
+    override fun onResume() {
+        super.onResume()
+        instance = this
+        ensureOverlayBridge()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Đăng ký TRƯỚC khi app xuống nền (nút nổi hiện ở trạng thái paused),
+        // đảm bảo overlay luôn gọi thẳng được xuống native dù isolate chính có bị treo.
+        ensureOverlayBridge()
+    }
+
     override fun onDestroy() {
         instance = null
         super.onDestroy()
+    }
+
+    /**
+     * Gắn OverlayBridge lên engine của nút nổi (flutter_overlay_window cache nó dưới
+     * tag "myCachedEngine"). Engine này được tạo khi plugin attach vào Activity và tồn tại
+     * suốt vòng đời process, nên chỉ cần đăng ký 1 lần là đủ (register() đã idempotent).
+     */
+    private fun ensureOverlayBridge() {
+        try {
+            val overlayEngine = FlutterEngineCache.getInstance().get(OverlayBridge.OVERLAY_ENGINE_TAG)
+            if (overlayEngine != null) {
+                OverlayBridge.register(overlayEngine, applicationContext)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("HiCarMain", "ensureOverlayBridge error: ${e.message}")
+        }
     }
 }

@@ -84,6 +84,34 @@ class AudioRepository {
     return updated;
   }
 
+  /// Bỏ đặt lời chào: xoá id đang lưu + tắt cờ active cho mọi audio.
+  Future<List<AudioModel>> clearGreetingAudio(
+    List<AudioModel> currentList,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.keyGreetingAudioId);
+    await prefs.remove('greeting_audio_path');
+
+    final updated =
+        currentList.map((a) => a.copyWith(isActiveGreeting: false)).toList();
+    await saveLocalList(updated);
+    return updated;
+  }
+
+  /// Bỏ đặt lời tạm biệt: xoá id đang lưu + tắt cờ active cho mọi audio.
+  Future<List<AudioModel>> clearGoodbyeAudio(
+    List<AudioModel> currentList,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.keyGoodbyeAudioId);
+    await prefs.remove('goodbye_audio_path');
+
+    final updated =
+        currentList.map((a) => a.copyWith(isActiveGoodbye: false)).toList();
+    await saveLocalList(updated);
+    return updated;
+  }
+
   // ===== Generate Audio =====
 
   Future<AudioModel> generateAudio({

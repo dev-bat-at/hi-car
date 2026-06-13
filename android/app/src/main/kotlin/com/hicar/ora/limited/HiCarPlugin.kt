@@ -151,6 +151,14 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 syncFilesToDeviceProtected()
                 result.success(true)
             }
+            "clearGreetingConfig" -> {
+                clearAudioConfig("greeting")
+                result.success(true)
+            }
+            "clearGoodbyeConfig" -> {
+                clearAudioConfig("goodbye")
+                result.success(true)
+            }
             "openApp" -> openApp(result)
             else -> result.notImplemented()
         }
@@ -171,6 +179,39 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         } catch (e: Exception) {
             android.util.Log.e("HiCarPlugin", "autoSyncBootFile: error – ${e.message}")
         }
+    }
+
+    // ── Clear audio config (bỏ đặt lời chào / tạm biệt) ───────────────────────
+
+    /**
+     * Xoá hoàn toàn cấu hình audio cho [type] ("greeting"/"goodbye"):
+     * - Xoá key path ở prefs thường VÀ device-protected (syncPrefs chỉ ghi đè, không xoá,
+     *   nên phải xoá thủ công ở cả 2 nơi).
+     * - Xoá file boot (boot_greeting.mp3 / boot_goodbye.mp3) để nút nổi/boot không phát lại.
+     */
+    private fun clearAudioConfig(type: String) {
+        val prefKey = if (type == "greeting") "flutter.greeting_audio_path" else "flutter.goodbye_audio_path"
+        val bootName = if (type == "greeting") "boot_greeting.mp3" else "boot_goodbye.mp3"
+
+        try {
+            context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .edit().remove(prefKey).apply()
+        } catch (e: Exception) {
+            android.util.Log.w("HiCarPlugin", "clearAudioConfig: regular prefs – ${e.message}")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val deviceContext = context.createDeviceProtectedStorageContext()
+                deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    .edit().remove(prefKey).commit()
+                val bootFile = java.io.File(deviceContext.filesDir, bootName)
+                if (bootFile.exists()) bootFile.delete()
+            } catch (e: Exception) {
+                android.util.Log.w("HiCarPlugin", "clearAudioConfig: device-protected – ${e.message}")
+            }
+        }
+        android.util.Log.i("HiCarPlugin", "clearAudioConfig($type) done")
     }
 
     // ── SharedPreferences → Device Protected sync ─────────────────────────────

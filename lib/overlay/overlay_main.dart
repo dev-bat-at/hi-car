@@ -6,11 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-@pragma('vm:entry-point')
-void overlayMain() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const OverlayApp());
-}
+// Lưu ý: entry point `overlayMain` được định nghĩa trong lib/main.dart (library gốc) để
+// release build (AOT) resolve được. Ở đây chỉ giữ widget OverlayApp/OverlayStrip.
 
 class OverlayApp extends StatelessWidget {
   const OverlayApp({super.key});
@@ -35,12 +32,16 @@ class OverlayStrip extends StatefulWidget {
 class _OverlayStripState extends State<OverlayStrip> {
   static const Color _neonCyan = Color(0xFF00FBFF);
   static const Color _neonBlue = Color(0xFF007BFF);
+
+  // Kênh gọi THẲNG xuống native (đăng ký trên chính engine của nút nổi).
+  // Không phụ thuộc isolate chính → bấm nút luôn phát được dù app ở nền lâu.
+  static const MethodChannel _bridge =
+      MethodChannel('com.hicar.ora.limited/overlay_bridge');
+
   bool _isGreetingPlaying = false;
   bool _isGoodbyePlaying = false;
   String? _errorMessage;
   BoxShape _currentShape = BoxShape.circle;
-
-  SendPort? homePort;
 
   int _toPhysicalPixels(double logicalSize) {
     final ratio = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
@@ -50,7 +51,32 @@ class _OverlayStripState extends State<OverlayStrip> {
   @override
   void initState() {
     super.initState();
-    // Listen for data from the main app if needed
+
+    // Native → overlay: cập nhật trạng thái pulse theo phát nhạc thực tế.
+    _bridge.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onPlaybackStarted':
+          final type = call.arguments?.toString();
+          if (mounted) {
+            setState(() {
+              _isGreetingPlaying = type == 'greeting';
+              _isGoodbyePlaying = type == 'goodbye';
+            });
+          }
+          break;
+        case 'onPlaybackComplete':
+          if (mounted) {
+            setState(() {
+              _isGreetingPlaying = false;
+              _isGoodbyePlaying = false;
+            });
+          }
+          break;
+      }
+      return null;
+    });
+
+    // Vẫn nghe kênh cũ (shareData từ app chính) để tương thích ngược.
     FlutterOverlayWindow.overlayListener.listen((data) {
       if (data is Map && data['type'] == 'state_update') {
         setState(() {
@@ -75,34 +101,77 @@ class _OverlayStripState extends State<OverlayStrip> {
     });
   }
 
-  Future<void> _sendAction(String action) async {
+  /// Gọi bridge native. Trả về bool kết quả (true=đã phát, false=chưa cấu hình),
+  /// hoặc null nếu bridge chưa sẵn sàng (đã fallback sang isolate chính).
+  Future<bool?> _invokeBridge(String method) async {
+    try {
+      return await _bridge.invokeMethod<bool>(method);
+    } on MissingPluginException {
+      // Fallback: bridge chưa đăng ký → dùng đường cũ qua isolate chính.
+      const map = {
+        'playGreeting': 'play_greeting',
+        'playGoodbye': 'play_goodbye',
+        'stopAudio': 'stop_audio',
+        'openApp': 'open_app',
+      };
+      _sendActionLegacy(map[method] ?? method);
+      return null;
+    } catch (e) {
+      print('Overlay: lỗi gọi bridge [$method]: $e');
+      return null;
+    }
+  }
+
+  /// Đường cũ (dự phòng): gửi action qua IsolateNameServer tới app chính.
+  Future<void> _sendActionLegacy(String action) async {
     try {
       final SendPort? sendPort =
           IsolateNameServer.lookupPortByName('overlay_action_port');
       if (sendPort != null) {
         sendPort.send({'action': action});
-        print('Overlay: Đã gửi thành công action [$action] qua Isolate');
-      } else {
-        print(
-            'Overlay: Không tìm thấy cổng overlay_action_port. Có thể main app chưa đăng ký.');
       }
     } catch (e) {
-      print('Overlay: Lỗi khi gửi action qua Isolate: $e');
+      print('Overlay: lỗi gửi action qua Isolate: $e');
     }
   }
 
   Future<void> _toggleGreeting() async {
-    // Không tự setState ở đây, để Main App điều khiển qua listener
-    await _sendAction(_isGreetingPlaying ? 'stop_audio' : 'play_greeting');
+    if (_isGreetingPlaying) {
+      setState(() => _isGreetingPlaying = false);
+      await _invokeBridge('stopAudio');
+    } else {
+      // Cập nhật lạc quan để phản hồi tức thì; native sẽ xác nhận lại qua callback.
+      setState(() {
+        _isGreetingPlaying = true;
+        _isGoodbyePlaying = false;
+      });
+      final ok = await _invokeBridge('playGreeting');
+      if (ok == false && mounted) {
+        // Chưa cấu hình lời chào (native đã hiện Toast cho khách).
+        setState(() => _isGreetingPlaying = false);
+      }
+    }
   }
 
   Future<void> _toggleGoodbye() async {
-    // Không tự setState ở đây, để Main App điều khiển qua listener
-    await _sendAction(_isGoodbyePlaying ? 'stop_audio' : 'play_goodbye');
+    if (_isGoodbyePlaying) {
+      setState(() => _isGoodbyePlaying = false);
+      await _invokeBridge('stopAudio');
+    } else {
+      setState(() {
+        _isGoodbyePlaying = true;
+        _isGreetingPlaying = false;
+      });
+      final ok = await _invokeBridge('playGoodbye');
+      if (ok == false && mounted) {
+        // Chưa cấu hình lời tạm biệt (native đã hiện Toast cho khách).
+        setState(() => _isGoodbyePlaying = false);
+      }
+    }
   }
 
   Future<void> _openApp() async {
-    await _sendAction('open_app');
+    await _invokeBridge('openApp');
   }
 
   @override
@@ -197,35 +266,34 @@ class _OverlayStripState extends State<OverlayStrip> {
               ],
             ),
           ),
-          // if (_errorMessage != null)
-          //   Positioned(
-          //     left: 4,
-          //     bottom: 4,
-          //     right: 4,
-          //     child: AnimatedOpacity(
-          //       opacity: _errorMessage != null ? 1.0 : 0.0,
-          //       duration: const Duration(milliseconds: 300),
-          //       child: Container(
-          //         padding:
-          //             const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          //         decoration: BoxDecoration(
-          //           color: Colors.black87,
-          //           borderRadius: BorderRadius.circular(12),
-          //           border:
-          //               Border.all(color: Colors.redAccent.withOpacity(0.5)),
-          //         ),
-          //         child: Text(
-          //           _errorMessage!,
-          //           style: const TextStyle(
-          //               color: Colors.redAccent,
-          //               fontSize: 8,
-          //               fontWeight: FontWeight.bold),
-          //           textAlign: TextAlign.center,
-          //           maxLines: 2,
-          //         ),
-          //       ),
-          //     ),
-          //   ),
+          if (_errorMessage != null)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              right: 4,
+              child: AnimatedOpacity(
+                opacity: _errorMessage != null ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                  ),
+                  child: Text(
+                    _errorMessage!,
+                    style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

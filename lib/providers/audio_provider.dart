@@ -199,6 +199,26 @@ class AudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Bỏ đặt làm lời chào (xoá khỏi cấu hình + vùng nhớ native + file boot).
+  Future<void> unsetGreeting() async {
+    _activeGreetingId = null;
+    _audioList = await AudioRepository.instance.clearGreetingAudio(_audioList);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('greeting_audio_path');
+    await ServiceChannel.instance.clearGreetingConfig();
+    notifyListeners();
+  }
+
+  /// Bỏ đặt làm lời tạm biệt (xoá khỏi cấu hình + vùng nhớ native + file boot).
+  Future<void> unsetGoodbye() async {
+    _activeGoodbyeId = null;
+    _audioList = await AudioRepository.instance.clearGoodbyeAudio(_audioList);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('goodbye_audio_path');
+    await ServiceChannel.instance.clearGoodbyeConfig();
+    notifyListeners();
+  }
+
   // ===== Playback =====
 
   Future<void> playAudio(AudioModel audio) async {
