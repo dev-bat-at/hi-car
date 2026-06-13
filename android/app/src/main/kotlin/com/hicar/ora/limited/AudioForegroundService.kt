@@ -400,8 +400,9 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                     updatePlaybackState(PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) 
                 }
 
-                // Notify Flutter to pulse UI
+                // Notify Flutter to pulse UI (engine chính + engine nút nổi)
                 HiCarPlugin.instance?.invokeServiceMethod("onPlaybackStarted", type)
+                OverlayBridge.notifyPlaybackStarted(type)
 
                 setOnCompletionListener {
                     updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
@@ -413,6 +414,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 setOnErrorListener { _, _, _ ->
                     releaseAudioFocus()
                     updatePlaybackState(PlaybackStateCompat.STATE_ERROR)
+                    OverlayBridge.notifyPlaybackComplete()
                     true
                 }
             }
@@ -420,6 +422,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             Log.e("HiCarAudio", "Error playing audio: ${e.message}")
             releaseAudioFocus()
             updatePlaybackState(PlaybackStateCompat.STATE_ERROR)
+            OverlayBridge.notifyPlaybackComplete()
         }
     }
 
@@ -544,6 +547,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         if (state == PlaybackStateCompat.STATE_STOPPED) {
             // Loại bỏ độ trễ 1s để UI cập nhật tức thì, tránh bị nháy khi phát bản tiếp theo
             HiCarPlugin.instance?.invokeServiceMethod("onPlaybackComplete")
+            OverlayBridge.notifyPlaybackComplete()
         }
     }
 

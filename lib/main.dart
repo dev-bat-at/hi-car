@@ -42,11 +42,14 @@ void _setupEasyLoading() {
     ..dismissOnTap = false;
 }
 
-// Register overlay entry point
-@pragma("vm:entry-point")
+// ⚠️ QUAN TRỌNG: entry point của nút nổi PHẢI nằm trong library gốc (cùng file với main()).
+//    flutter_overlay_window tạo engine với DartEntrypoint("overlayMain") KHÔNG kèm library URI,
+//    nên ở chế độ release (AOT) engine chỉ tìm hàm này trong library chứa main(). Nếu đặt ở
+//    file khác, release build sẽ KHÔNG tìm thấy → nút nổi biến mất.
+@pragma('vm:entry-point')
 void overlayMain() {
-  DartPluginRegistrant.ensureInitialized();
   WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
   runApp(const OverlayApp());
 }
 
@@ -126,14 +129,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed ||
-        state == AppLifecycleState.inactive) {
+    // 🟢 CHỈ ẩn overlay khi app THỰC SỰ ra tiền cảnh (resumed). Không ẩn ở 'inactive'
+    //    vì trạng thái này xảy ra thoáng qua (kéo thanh thông báo, dialog hệ thống,
+    //    đang chuyển cảnh...) khiến nút nổi bị tắt sớm/giật và đóng/mở liên tục.
+    if (state == AppLifecycleState.resumed) {
       _overlayProvider.hideOverlay();
 
       // 🟢 Chế độ Màn Độ: mỗi lần MỞ LẠI app (resume từ nền) thì phát lại lời chào.
       //    Vì sau khi phát xong app chỉ bị thu nhỏ (moveToHome) chứ không bị kill,
       //    nên initState/_initPlayOnOpen không chạy lại — phải tự kích hoạt ở đây.
-      if (state == AppLifecycleState.resumed && _wasPaused) {
+      if (_wasPaused) {
         _wasPaused = false;
         _maybePlayGreetingOnResume();
       }
