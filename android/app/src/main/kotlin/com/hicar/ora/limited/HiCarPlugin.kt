@@ -155,6 +155,10 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 syncFilesToDeviceProtected()
                 result.success(true)
             }
+            "clearAuthState" -> {
+                clearAuthState()
+                result.success(true)
+            }
             "clearGreetingConfig" -> {
                 clearAudioConfig("greeting")
                 result.success(true)
@@ -183,6 +187,38 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         } catch (e: Exception) {
             android.util.Log.e("HiCarPlugin", "autoSyncBootFile: error – ${e.message}")
         }
+    }
+
+    // ── Clear auth state (đăng xuất) ──────────────────────────────────────────
+
+    /**
+     * Xoá token đăng nhập khỏi prefs thường VÀ device-protected. syncPrefs chỉ ghi đè
+     * (không xoá), nên sau khi Flutter remove key ở prefs thường thì vùng device-protected
+     * vẫn còn token cũ → BootReceiver sau reboot vẫn tưởng đã đăng nhập và tự phát nhạc.
+     * Hàm này xoá thủ công ở cả 2 nơi để chặn triệt để.
+     */
+    private fun clearAuthState() {
+        val authKeys = listOf("flutter.auth_token", "flutter.user_data")
+
+        try {
+            val editor = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+            authKeys.forEach { editor.remove(it) }
+            editor.apply()
+        } catch (e: Exception) {
+            android.util.Log.w("HiCarPlugin", "clearAuthState: regular prefs – ${e.message}")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val deviceContext = context.createDeviceProtectedStorageContext()
+                val editor = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+                authKeys.forEach { editor.remove(it) }
+                editor.commit()
+            } catch (e: Exception) {
+                android.util.Log.w("HiCarPlugin", "clearAuthState: device-protected – ${e.message}")
+            }
+        }
+        android.util.Log.i("HiCarPlugin", "clearAuthState done")
     }
 
     // ── Clear audio config (bỏ đặt lời chào / tạm biệt) ───────────────────────

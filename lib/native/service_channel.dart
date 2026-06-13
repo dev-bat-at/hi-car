@@ -173,6 +173,18 @@ class ServiceChannel {
     }
   }
 
+  /// Xoá token đăng nhập (auth_token, user_data) khỏi cả prefs thường VÀ vùng
+  /// device-protected. Dùng khi đăng xuất để boot/khởi động lại không tự phát nhạc.
+  Future<void> clearAuthState() async {
+    try {
+      await _channel.invokeMethod('clearAuthState');
+    } on PlatformException catch (e) {
+      debugPrint('ServiceChannel: clearAuthState error: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('ServiceChannel: clearAuthState missing plugin: $e');
+    }
+  }
+
   Future<void> syncPrefs() async {
     try {
       await _channel.invokeMethod('syncPrefs');

@@ -24,19 +24,26 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  // 🟢 Giữ tham chiếu trực tiếp để gỡ listener an toàn trong dispose().
+  //    KHÔNG dùng context.read trong dispose() vì element đã bị defunct → crash
+  //    "Null check operator used on a null value".
+  AudioProvider? _audioProviderRef;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _checkAll();
-      context.read<AudioProvider>().addListener(_audioListener);
+      _audioProviderRef = context.read<AudioProvider>();
+      _audioProviderRef?.addListener(_audioListener);
     });
   }
 
   void _audioListener() {
     if (!mounted) return;
-    final audio = context.read<AudioProvider>();
+    final audio = _audioProviderRef ?? context.read<AudioProvider>();
     if (audio.syncStatus == SyncStatus.error && audio.syncError != null) {
       UiUtils.showError(context, audio.syncError!);
     } else if (audio.syncStatus == SyncStatus.success) {
@@ -46,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    context.read<AudioProvider>().removeListener(_audioListener);
+    _audioProviderRef?.removeListener(_audioListener);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -55,12 +62,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAll();
-      final settings = context.read<SettingsProvider>();
-      final audioProvider = context.read<AudioProvider>();
-      if (settings.connectionMode == 'android_box_mode' &&
-          settings.autoPlayEnabled) {
-        audioProvider.playGreetingViaNative();
-      }
+      // 🟢 KHÔNG tự phát lại lời chào ở chế độ Box khi resume.
+      //    Box do BootReceiver/Service phát ngầm khi Box khởi động — nếu phát thêm
+      //    ở đây sẽ gây "đang phát bị ngắt rồi phát lại từ đầu" hoặc "phát xong lại
+      //    phát tiếp" mỗi lần app quay lại tiền cảnh.
     }
   }
 

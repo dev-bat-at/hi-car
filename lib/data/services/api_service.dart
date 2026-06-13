@@ -41,6 +41,16 @@ class ApiService {
     return data;
   }
 
+  /// Đăng xuất tài khoản.
+  /// API: POST /api/auth/logout
+  Future<void> logout() async {
+    try {
+      await _client.post(ApiEndpoints.logout);
+    } catch (_) {
+      // Don't block logout if API call fails
+    }
+  }
+
   /// Đăng ký tài khoản mới.
   Future<Map<String, dynamic>> signup({
     required String phone,

@@ -33,6 +33,10 @@ class AudioProvider extends ChangeNotifier {
       onNativePlaybackComplete; // Callback for UI to react
   Timer? _playbackWatchdog;
 
+  // 🟢 Chặn kích hoạt phát chồng lấn trong khoảng thời gian khởi động (boot + mở app +
+  //    resume có thể gọi gần như đồng thời). Tránh ngắt/phát lại từ đầu.
+  bool _isStartingPlayback = false;
+
   List<AudioModel> get audioList {
     final mappedList = _audioList.map((a) {
       return a.copyWith(
@@ -117,20 +121,28 @@ class AudioProvider extends ChangeNotifier {
 
   // ===== Storage & State Management =====
 
-  Future<void> clearCache() async {
+  /// Xoá cache danh sách audio.
+  ///
+  /// [keepActiveSelection] = true: GIỮ LẠI lựa chọn lời chào/tạm biệt đã setup
+  /// (id + path + file boot) để sau khi đăng nhập lại 2 nút vẫn còn nhạc. Danh sách
+  /// sẽ được nạp lại từ server và cờ active được khôi phục theo id đã lưu.
+  Future<void> clearCache({bool keepActiveSelection = false}) async {
     _audioList = [];
-    _activeGreetingId = null;
-    _activeGoodbyeId = null;
     _currentlyPlaying = null;
     _isPlaying = false;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.keyAudioList);
     await prefs.remove('cached_audio_list');
-    await prefs.remove(AppConstants.keyGreetingAudioId);
-    await prefs.remove(AppConstants.keyGoodbyeAudioId);
-    await prefs.remove('greeting_audio_path');
-    await prefs.remove('goodbye_audio_path');
+
+    if (!keepActiveSelection) {
+      _activeGreetingId = null;
+      _activeGoodbyeId = null;
+      await prefs.remove(AppConstants.keyGreetingAudioId);
+      await prefs.remove(AppConstants.keyGoodbyeAudioId);
+      await prefs.remove('greeting_audio_path');
+      await prefs.remove('goodbye_audio_path');
+    }
 
     notifyListeners();
   }
@@ -158,6 +170,12 @@ class AudioProvider extends ChangeNotifier {
       _lastSyncTime = DateTime.now();
       _syncStatus = SyncStatus.success;
       _syncMessage = 'Đồng bộ hoàn tất (${updated.length} file)';
+
+      // 🟢 Khôi phục lựa chọn lời chào/tạm biệt đã setup từ prefs để 2 nút giữ nguyên
+      //    cấu hình sau khi đăng nhập lại / đồng bộ.
+      final prefs = await SharedPreferences.getInstance();
+      _activeGreetingId = prefs.getString(AppConstants.keyGreetingAudioId);
+      _activeGoodbyeId = prefs.getString(AppConstants.keyGoodbyeAudioId);
 
       // Update native service
       await _syncNativePaths();
@@ -267,6 +285,12 @@ class AudioProvider extends ChangeNotifier {
   }
 
   Future<bool> playGreetingViaNative() async {
+    // 🟢 Đang trong quá trình khởi động phát khác → bỏ qua để tránh phát chồng/ngắt.
+    if (_isStartingPlayback) {
+      debugPrint('AudioProvider: playGreeting bỏ qua (đang khởi động phát)');
+      return false;
+    }
+
     final audio = activeGreeting;
     String? path;
 
@@ -285,6 +309,7 @@ class AudioProvider extends ChangeNotifier {
       return false;
     }
 
+    _isStartingPlayback = true;
     try {
       _isNativeGreetingPlaying = true;
       _isNativeGoodbyePlaying = false;
@@ -309,10 +334,18 @@ class AudioProvider extends ChangeNotifier {
       );
       _stopNativePlaybackState();
       return false;
+    } finally {
+      _isStartingPlayback = false;
     }
   }
 
   Future<bool> playGoodbyeViaNative() async {
+    // 🟢 Đang trong quá trình khởi động phát khác → bỏ qua để tránh phát chồng/ngắt.
+    if (_isStartingPlayback) {
+      debugPrint('AudioProvider: playGoodbye bỏ qua (đang khởi động phát)');
+      return false;
+    }
+
     final audio = activeGoodbye;
     String? path;
 
@@ -331,6 +364,7 @@ class AudioProvider extends ChangeNotifier {
       return false;
     }
 
+    _isStartingPlayback = true;
     try {
       _isNativeGoodbyePlaying = true;
       _isNativeGreetingPlaying = false;
@@ -355,6 +389,8 @@ class AudioProvider extends ChangeNotifier {
       );
       _stopNativePlaybackState();
       return false;
+    } finally {
+      _isStartingPlayback = false;
     }
   }
 

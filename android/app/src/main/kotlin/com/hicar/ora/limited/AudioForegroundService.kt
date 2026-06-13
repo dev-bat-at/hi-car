@@ -53,6 +53,13 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         @Volatile var autoPlayEnabled: Boolean = true
         @Volatile var greetingAudioPath: String = ""
         @Volatile var goodbyeAudioPath: String = ""
+
+        // 🟢 Chống phát lặp lời chào khi BOOT: thiết bị thường gửi NHIỀU broadcast
+        //    (LOCKED_BOOT_COMPLETED + BOOT_COMPLETED + QUICKBOOT...), mỗi cái lại
+        //    schedule một lần phát → "phát xong ngắt rồi phát lại" hoặc "phát xong lại
+        //    phát tiếp". Chỉ cho phép XỬ LÝ MỘT lần trên mỗi vòng đời tiến trình.
+        //    Reboot máy → tiến trình mới → cờ tự reset.
+        @Volatile var bootGreetingHandled: Boolean = false
     }
 
     private var mediaPlayer: MediaPlayer? = null
@@ -197,8 +204,15 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 playAudio(path, "goodbye")
             }
             ACTION_PLAY_GREETING_DELAYED -> {
-                val preferBootAudio = intent.getBooleanExtra(EXTRA_PREFER_BOOT_AUDIO, false)
-                scheduleDelayedGreeting(useBootAudio = preferBootAudio)
+                // 🟢 Chỉ phát lời chào BOOT đúng MỘT lần / tiến trình để tránh phát lặp
+                //    do nhiều broadcast boot gửi tới.
+                if (bootGreetingHandled) {
+                    Log.d("HiCarService", "Boot greeting đã xử lý → bỏ qua broadcast lặp")
+                } else {
+                    bootGreetingHandled = true
+                    val preferBootAudio = intent.getBooleanExtra(EXTRA_PREFER_BOOT_AUDIO, false)
+                    scheduleDelayedGreeting(useBootAudio = preferBootAudio)
+                }
             }
             ACTION_STOP_AUDIO -> stopPlayback()
             ACTION_BLUETOOTH_DISCONNECTED -> {

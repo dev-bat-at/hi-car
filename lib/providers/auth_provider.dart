@@ -1,7 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/constants.dart';
 import '../data/models/user_model.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/services/api_client.dart';
+import '../data/services/api_service.dart';
+import '../native/service_channel.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
@@ -60,7 +64,28 @@ class AuthProvider extends ChangeNotifier {
   // ===== Logout =====
 
   Future<void> logout() async {
-    await AuthRepository.instance.logout();
+    // 🟢 Gọi API huỷ token phía server (best-effort). BỌC timeout để KHÔNG BAO GIỜ
+    //    làm treo nút đăng xuất nếu mạng chậm / server không phản hồi.
+    try {
+      await ApiService.instance.logout().timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Mạng lỗi / quá hạn → vẫn tiếp tục đăng xuất cục bộ.
+    }
+
+    // 🟢 Xoá trạng thái đăng nhập cục bộ NHƯNG GIỮ LẠI nhạc chào/tạm biệt đã setup.
+    //    (Không gọi AuthRepository.logout() vì nó xoá cả greeting/goodbye config.)
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.keyAuthToken);
+    await prefs.remove(AppConstants.keyUserData);
+
+    // 🟢 Xoá token ở cả vùng device-protected để sau khi REBOOT, BootReceiver không
+    //    còn coi là đã đăng nhập → không tự phát nhạc khi đã đăng xuất.
+    try {
+      await ServiceChannel.instance
+          .clearAuthState()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+
     _user = null;
     _setStatus(AuthStatus.unauthenticated);
   }

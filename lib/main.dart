@@ -8,9 +8,11 @@ import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:hi_car/core/app_colors.dart';
 import 'package:hi_car/overlay/overlay_main.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/app_theme.dart';
 import 'core/app_router.dart';
 import 'core/constants.dart';
+import 'core/utils/ui_utils.dart';
 import 'native/service_channel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/audio_provider.dart';
@@ -76,6 +78,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     // 🟢 Chế độ Bluetooth: Khi vừa kết nối thành công thì phát nhạc (nếu app đang mở)
     _bluetoothProvider.onTargetConnected = () async {
+      // Chưa đăng nhập thì tuyệt đối không phát nhạc.
+      if (!await _isLoggedIn()) return false;
       if ((_settingsProvider.connectionMode == 'phone_bluetooth' ||
               _settingsProvider.connectionMode == 'phone_android_auto') &&
           _settingsProvider.autoPlayEnabled) {
@@ -150,10 +154,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Kiểm tra đã đăng nhập chưa (đọc trực tiếp từ prefs để không phụ thuộc context).
+  Future<bool> _isLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(AppConstants.keyAuthToken);
+    return token != null && token.isNotEmpty;
+  }
+
   /// Phát lại lời chào khi app được mở lại (chỉ áp dụng chế độ Màn Độ + bật "phát khi mở app").
   Future<void> _maybePlayGreetingOnResume() async {
     if (_settingsProvider.connectionMode != 'android_screen_mode') return;
     if (!_settingsProvider.playOnOpen) return;
+    // 🟢 Chưa đăng nhập thì không phát (vd: vừa đăng xuất, đang ở màn Login).
+    if (!await _isLoggedIn()) return;
     if (_audioProvider.isNativeGreetingPlaying ||
         _audioProvider.isNativeGoodbyePlaying) {
       return;
@@ -274,22 +287,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     await Future.delayed(const Duration(milliseconds: 1000));
 
-    if (_settingsProvider.playOnOpen) {
-      int retryCount = 0;
-      while (_audioProvider.audioList.isEmpty && retryCount < 10) {
-        debugPrint('Main: Audio list empty, waiting... ($retryCount)');
-        await Future.delayed(const Duration(milliseconds: 1000));
-        retryCount++;
-      }
+    if (!_settingsProvider.playOnOpen) return;
 
-      if (_audioProvider.audioList.isNotEmpty) {
-        debugPrint('Main: Triggering play greeting on open...');
-        _hasTriggeredOpenGreeting = true;
-        await _audioProvider.playGreetingViaNative();
-      } else {
-        debugPrint(
-            'Main: Could not trigger greeting - list still empty after 10s');
-      }
+    // 🟢 Chưa đăng nhập thì KHÔNG phát nhạc khi mở app (vd: vừa đăng xuất).
+    if (!await _isLoggedIn()) {
+      debugPrint('Main: Not logged in → skip play greeting on open');
+      return;
+    }
+
+    // 🟢 Chế độ Android Box do BootReceiver/Service tự phát ngầm khi Box khởi động.
+    //    Không phát thêm từ Flutter để tránh bị ngắt/phát lại từ đầu hoặc phát lặp.
+    if (_settingsProvider.connectionMode == 'android_box_mode') {
+      debugPrint('Main: Box mode → boot service owns playback, skip on open');
+      return;
+    }
+
+    int retryCount = 0;
+    while (_audioProvider.audioList.isEmpty && retryCount < 10) {
+      debugPrint('Main: Audio list empty, waiting... ($retryCount)');
+      await Future.delayed(const Duration(milliseconds: 1000));
+      retryCount++;
+    }
+
+    if (_audioProvider.audioList.isNotEmpty) {
+      debugPrint('Main: Triggering play greeting on open...');
+      _hasTriggeredOpenGreeting = true;
+      await _audioProvider.playGreetingViaNative();
+    } else {
+      debugPrint(
+          'Main: Could not trigger greeting - list still empty after 10s');
     }
   }
 
@@ -322,6 +348,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 title: 'Giọng Thương Gia',
                 debugShowCheckedModeBanner: false,
                 theme: AppTheme.dark,
+                scaffoldMessengerKey: rootScaffoldMessengerKey,
                 routerConfig: AppRouter.router,
                 builder: EasyLoading.init(),
               );

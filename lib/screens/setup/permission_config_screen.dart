@@ -109,7 +109,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
                             if (widget.isFromSettings) {
                               _handleRestart(context);
                             } else {
-                              context.push('/login');
+                              _goToLogin(context);
                             }
                           },
                         ),
@@ -327,7 +327,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
                       if (widget.isFromSettings) {
                         _handleRestart(context);
                       } else {
-                        context.push('/login');
+                        _goToLogin(context);
                       }
                     },
                   ),
@@ -424,7 +424,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
               if (widget.isFromSettings) {
                 _handleRestart(context);
               } else {
-                context.push('/login');
+                _goToLogin(context);
               }
             },
           ),
@@ -498,6 +498,14 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
         ],
       ),
     );
+  }
+
+  /// Đi tới màn Login trong luồng cài đặt lần đầu.
+  /// 🟢 PHẢI commit chế độ kết nối đang chọn (pending) TRƯỚC khi rời màn này, nếu không
+  ///    khi vào app chế độ sẽ luôn về mặc định "Màn hình Android".
+  Future<void> _goToLogin(BuildContext context) async {
+    await context.read<SettingsProvider>().commitSettings();
+    if (context.mounted) context.push('/login');
   }
 
   void _handleRestart(BuildContext context) async {
