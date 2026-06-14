@@ -126,6 +126,10 @@
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Cho phép truy vấn ContentProvider trạng thái kết nối của Android Auto
+             (CarConnection) trên Android 11+ (package visibility). Thiếu khai báo này
+             thì contentResolver.query trả về null → không phát hiện được AA. -->
+        <provider android:authorities="androidx.car.app.connection" />
     </queries>
 
 </manifest>

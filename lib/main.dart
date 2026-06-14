@@ -76,12 +76,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _settingsProvider = SettingsProvider()..init();
     _bluetoothProvider = BluetoothProvider()..init();
 
-    // 🟢 Chế độ Bluetooth: Khi vừa kết nối thành công thì phát nhạc (nếu app đang mở)
+    // 🟢 Chế độ Bluetooth: Khi vừa kết nối thành công thì phát nhạc (nếu app đang mở).
+    //    Android Auto do native service tự phát (CarConnection) — không phát thêm từ Flutter.
     _bluetoothProvider.onTargetConnected = () async {
       // Chưa đăng nhập thì tuyệt đối không phát nhạc.
       if (!await _isLoggedIn()) return false;
-      if ((_settingsProvider.connectionMode == 'phone_bluetooth' ||
-              _settingsProvider.connectionMode == 'phone_android_auto') &&
+      if (_settingsProvider.connectionMode == 'phone_bluetooth' &&
           _settingsProvider.autoPlayEnabled) {
         debugPrint('Main: Target Bluetooth connected, triggering greeting...');
         return await _audioProvider.playGreetingViaNative();

@@ -190,6 +190,19 @@ class BluetoothReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        // ⚠️ Android 12+ (API 31): đọc BluetoothDevice.address/name YÊU CẦU quyền BLUETOOTH_CONNECT.
+        //    Nếu chưa được cấp, truy cập sẽ ném SecurityException → nếu không bắt, receiver "chết"
+        //    âm thầm và auto-play (đặc biệt Android Auto KHÔNG DÂY) không bao giờ chạy.
+        try {
+            handleReceive(context, intent)
+        } catch (e: SecurityException) {
+            Log.w("HiCar", "BluetoothReceiver thiếu quyền BLUETOOTH_CONNECT: ${e.message}")
+        } catch (e: Exception) {
+            Log.w("HiCar", "BluetoothReceiver lỗi: ${e.message}")
+        }
+    }
+
+    private fun handleReceive(context: Context, intent: Intent) {
         val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
         } else {
@@ -278,7 +291,17 @@ class BluetoothReceiver : BroadcastReceiver() {
                 }
             }
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                // Cancel any pending delayed playback
+                val shouldStop = when (connectionMode) {
+                    // Chỉ dừng khi đúng xe mục tiêu ngắt kết nối
+                    "phone_bluetooth" ->
+                        targetAddress.isNotEmpty() &&
+                            deviceAddress.equals(targetAddress, ignoreCase = true)
+                    // AA không dây: ngắt BT xe → dừng nhạc ngay
+                    "phone_android_auto" -> true
+                    else -> false
+                }
+                if (!shouldStop) return
+
                 val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
                     action = AudioForegroundService.ACTION_BLUETOOTH_DISCONNECTED
                 }
