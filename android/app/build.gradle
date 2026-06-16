@@ -56,7 +56,10 @@ android {
         versionName flutterVersionName
 
         ndk {
-            abiFilters "arm64-v8a", "x86_64"
+            // arm64-v8a: thiết bị 64-bit hiện đại (bắt buộc cho Play).
+            // armeabi-v7a: nhiều Android Box / màn hình xe đời cũ là 32-bit ARM.
+            // (Bỏ x86_64 vì gần như chỉ dùng cho emulator, không cần cho thiết bị thật.)
+            abiFilters "arm64-v8a", "armeabi-v7a"
         }
     }
 
@@ -72,8 +75,10 @@ android {
         release {
             // signingConfig signingConfigs.debug
             signingConfig signingConfigs.release
-            shrinkResources false
+            // 🟢 Bật R8 để rút gọn code + tài nguyên, giảm dung lượng app.
+            //    Các lớp native/plugin/entry-point đã được giữ trong proguard-rules.pro.
             minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

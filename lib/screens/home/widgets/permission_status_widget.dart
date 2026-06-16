@@ -12,6 +12,10 @@ class PermissionStatusWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // iOS không dùng các quyền hệ thống kiểu Android (overlay/pin/autostart...),
+    // CarPlay tự định tuyến âm thanh → ẩn hẳn bảng "Cấp quyền hoạt động" trên iOS.
+    if (io.Platform.isIOS) return const SizedBox.shrink();
+
     final settings = context.watch<SettingsProvider>();
     final mode = settings.connectionMode;
 
@@ -36,7 +40,7 @@ class PermissionStatusWidget extends StatelessWidget {
         );
         permissionList.add(Divider(color: AppColors.divider, height: 16.h));
 
-        // Battery Optimization (Chỉ Android)
+        // Battery Optimization (Chỉ Android) — mở màn hình Cài đặt để người dùng tự tắt.
         if (io.Platform.isAndroid) {
           permissionList.add(
             _PermissionRow(
@@ -45,6 +49,7 @@ class PermissionStatusWidget extends StatelessWidget {
               isGranted: batteryGranted,
               onTap: () =>
                   permissionProvider.requestBatteryOptimizationPermission(),
+              actionLabel: 'MỞ CÀI ĐẶT',
             ),
           );
           permissionList.add(Divider(color: AppColors.divider, height: 16.h));

@@ -43,3 +43,23 @@
 # Flutter Background Service rules (Nếu bạn có dùng cho Foreground)
 # =====================================================================
 -keep class id.flutter.flutter_background_service.** { *; }
+
+# =====================================================================
+# AndroidX Media (MediaBrowserServiceCompat / Android Auto)
+# Giữ để chế độ Android Auto bind được service ở bản Release (R8).
+# =====================================================================
+-keep class androidx.media.** { *; }
+-keep class android.support.v4.media.** { *; }
+-dontwarn androidx.media.**
+
+# =====================================================================
+# Giữ các Service/Receiver native khai báo trong Manifest (R8 an toàn)
+# =====================================================================
+-keep public class * extends android.app.Service { *; }
+-keep public class * extends android.content.BroadcastReceiver { *; }
+
+# Giữ enum (một số plugin dùng valueOf/values qua phản chiếu)
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -66,7 +68,9 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
         centerTitle: true,
       ),
       body: SafeArea(
-        child: OrientationBuilder(
+        child: Platform.isIOS
+            ? _buildIOSLayout(context)
+            : OrientationBuilder(
           builder: (context, orientation) {
             final isLandscape = orientation == Orientation.landscape;
 
@@ -105,7 +109,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
                             if (widget.isFromSettings) {
                               _handleRestart(context);
                             } else {
-                              context.push('/login');
+                              _goToLogin(context);
                             }
                           },
                         ),
@@ -323,7 +327,7 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
                       if (widget.isFromSettings) {
                         _handleRestart(context);
                       } else {
-                        context.push('/login');
+                        _goToLogin(context);
                       }
                     },
                   ),
@@ -333,6 +337,99 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildIOSLayout(BuildContext context) {
+    Widget bullet(IconData icon, String title, String desc) => Container(
+          margin: EdgeInsets.only(bottom: 12.h),
+          padding: EdgeInsets.all(14.w),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(12.r),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.all(8.w),
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: Colors.white, size: 18.sp),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4.h),
+                    Text(desc,
+                        style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12.sp,
+                            height: 1.35)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(16.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Trên iOS không cần các quyền chạy ngầm như Android. Hệ thống tự định tuyến âm thanh ra loa xe khi kết nối CarPlay/Bluetooth.',
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 14.sp),
+                ),
+                SizedBox(height: 20.h),
+                bullet(
+                  Icons.audiotrack_rounded,
+                  'Phát nền tự động',
+                  'Ứng dụng đã bật chế độ âm thanh nền — lời chào sẽ phát ra loa xe ngay cả khi màn hình tắt.',
+                ),
+                bullet(
+                  Icons.bolt_rounded,
+                  'Thiết lập Phím tắt (quan trọng)',
+                  'Mở app "Phím tắt" → Tự động hoá → "Khi CarPlay kết nối" → thêm tác vụ "Phát lời chào HiCar", rồi tắt "Hỏi trước khi chạy".',
+                ),
+                bullet(
+                  Icons.mic_rounded,
+                  'Gọi bằng Siri (tuỳ chọn)',
+                  'Bạn có thể nói "Phát lời chào HiCar" để phát ngay.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.all(16.w),
+          child: _GlowButton(
+            label: widget.isFromSettings ? 'HOÀN TẤT' : 'TIẾP TỤC',
+            onTap: () {
+              if (widget.isFromSettings) {
+                _handleRestart(context);
+              } else {
+                _goToLogin(context);
+              }
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -401,6 +498,14 @@ class _PermissionConfigScreenState extends State<PermissionConfigScreen>
         ],
       ),
     );
+  }
+
+  /// Đi tới màn Login trong luồng cài đặt lần đầu.
+  /// 🟢 PHẢI commit chế độ kết nối đang chọn (pending) TRƯỚC khi rời màn này, nếu không
+  ///    khi vào app chế độ sẽ luôn về mặc định "Màn hình Android".
+  Future<void> _goToLogin(BuildContext context) async {
+    await context.read<SettingsProvider>().commitSettings();
+    if (context.mounted) context.push('/login');
   }
 
   void _handleRestart(BuildContext context) async {

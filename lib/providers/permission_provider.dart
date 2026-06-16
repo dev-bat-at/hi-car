@@ -27,7 +27,8 @@ class PermissionStatus {
   });
 
   bool isGrantedForMode(String mode) {
-    if (mode == 'phone_bluetooth') {
+    if (mode == 'phone_bluetooth' || mode == 'phone_android_auto') {
+      // Android Auto không dây cũng cần Bluetooth để bắt sự kiện kết nối tự phát.
       return bluetoothConnect && notification;
     } else if (mode == 'android_box_mode' || mode == 'android_screen_mode') {
       return notification && batteryOptimization;
@@ -37,7 +38,7 @@ class PermissionStatus {
 
   int getGrantedCountForMode(String mode) {
     int count = 0;
-    if (mode == 'phone_bluetooth') {
+    if (mode == 'phone_bluetooth' || mode == 'phone_android_auto') {
       if (bluetoothConnect) count++;
       if (notification) count++;
     } else if (mode == 'android_box_mode' || mode == 'android_screen_mode') {
@@ -48,7 +49,7 @@ class PermissionStatus {
   }
 
   int getTotalCountForMode(String mode) {
-    if (mode == 'phone_bluetooth') return 2;
+    if (mode == 'phone_bluetooth' || mode == 'phone_android_auto') return 2;
     if (mode == 'android_box_mode' || mode == 'android_screen_mode') return 2;
     return 0;
   }
@@ -128,10 +129,16 @@ class PermissionProvider extends ChangeNotifier {
     return _status.overlay;
   }
 
+  /// Mở màn hình Cài đặt "Tối ưu hoá pin" để người dùng tự tắt cho app.
+  /// ⚠️ TUÂN THỦ CHÍNH SÁCH PLAY: không dùng hộp thoại cấp quyền trực tiếp
+  ///    (Permission.ignoreBatteryOptimizations.request) vì Google hạn chế. App
+  ///    vẫn ĐỌC được trạng thái qua Permission.ignoreBatteryOptimizations.status.
   Future<bool> requestBatteryOptimizationPermission() async {
-    final result = await Permission.ignoreBatteryOptimizations.request();
+    if (Platform.isAndroid) {
+      await ServiceChannel.instance.showBatteryOptimizationSettings();
+    }
     await checkAllPermissions();
-    return result.isGranted;
+    return _status.batteryOptimization;
   }
 
   Future<bool> requestBackgroundExecutionPermissions() async {
@@ -157,13 +164,22 @@ class PermissionProvider extends ChangeNotifier {
         await FlutterOverlayWindow.requestPermission();
       }
     } else if (mode == 'phone_android_auto') {
-      await Permission.notification.request();
+      // 🟢 Android Auto KHÔNG DÂY bắt tay qua Bluetooth → cần BLUETOOTH_CONNECT/SCAN để
+      //    BluetoothReceiver nhận được ACL_CONNECTED và đọc thiết bị (Android 12+). Thiếu
+      //    quyền này khiến auto-play khi kết nối AA không hoạt động.
+      await [
+        Permission.bluetooth,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.notification,
+      ].request();
       if (!_status.overlay) {
         await FlutterOverlayWindow.requestPermission();
       }
     } else if (mode == 'android_box_mode') {
       await Permission.notification.request();
-      await Permission.ignoreBatteryOptimizations.request();
+      // ⚠️ Mở Cài đặt tối ưu pin thay vì hộp thoại cấp trực tiếp (chính sách Play).
+      await ServiceChannel.instance.showBatteryOptimizationSettings();
       if (!_status.overlay) {
         await FlutterOverlayWindow.requestPermission();
       }

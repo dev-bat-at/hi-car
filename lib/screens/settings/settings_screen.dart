@@ -8,6 +8,7 @@ import '../../core/app_colors.dart';
 import '../../core/utils/ui_utils.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/audio_provider.dart';
+import '../../providers/overlay_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../data/services/api_client.dart';
 import '../../core/logger.dart';
@@ -511,7 +512,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showLogoutConfirm(BuildContext context, AuthProvider auth) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.cardElevated,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
@@ -524,59 +525,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Không',
                 style: TextStyle(color: AppColors.textHint)),
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
-              await auth.logout();
-              if (context.mounted) {
-                context.go('/login');
+              Navigator.pop(dialogContext);
+
+              // 🟢 Lấy sẵn các tham chiếu TRƯỚC khi await để không phụ thuộc
+              //    context sau này (tránh logout "không ăn" do context bị gỡ).
+              final audio = context.read<AudioProvider>();
+              final overlay = context.read<OverlayProvider>();
+              final router = GoRouter.of(context);
+
+              EasyLoading.show(status: 'Đang đăng xuất...');
+
+              // 🟢 CHỈ await đúng việc đăng xuất (đã bọc timeout bên trong nên
+              //    KHÔNG THỂ treo). Thêm timeout tổng làm lưới an toàn.
+              try {
+                await auth.logout().timeout(const Duration(seconds: 6));
+              } catch (_) {
+                // Bất kể lỗi/timeout gì cũng vẫn đưa về Login.
               }
+
+              EasyLoading.dismiss();
+
+              // 🟢 Dọn dẹp phụ (tắt nút nổi, dừng nhạc) chạy NGẦM — KHÔNG await để
+              //    tránh kẹt loading nếu plugin overlay/just_audio không phản hồi.
+              overlay.setBubbleEnabled(false);
+              audio.stopNativeAudio();
+              audio.stopAudio();
+
+              // 🟢 LUÔN điều hướng về Login (dùng router đã giữ sẵn).
+              router.go('/login');
             },
             child: const Text('Đăng xuất',
                 style: TextStyle(color: AppColors.error)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteConfirm(BuildContext context, AuthProvider auth) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardElevated,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-        title: Text('XÓA TÀI KHOẢN?',
-            style: TextStyle(
-                color: AppColors.error,
-                fontSize: 15.sp,
-                fontWeight: FontWeight.bold)),
-        content: Text(
-            'Hành động này không thể hoàn tác. Toàn bộ audio đã lưu và tài khoản sẽ bị xoá vĩnh viễn khỏi server.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Không',
-                style: TextStyle(color: AppColors.textHint)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await auth.deleteAccount();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: AppColors.textPrimary),
-            child: const Text('Xác nhận xóa'),
           ),
         ],
       ),

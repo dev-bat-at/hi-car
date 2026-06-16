@@ -71,14 +71,18 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (!mounted) return;
     if (success) {
-      // Synchronize audio list for the new account immediately
+      // Synchronize audio list for the new account immediately.
+      // 🟢 GIỮ LẠI lời chào/tạm biệt đã setup (keepActiveSelection) để 2 nút phát
+      //    không bị mất cấu hình sau khi đăng xuất → đăng nhập lại.
       final audio = context.read<AudioProvider>();
-      await audio.clearCache();
+      await audio.clearCache(keepActiveSelection: true);
       audio.syncFromServer(); // Start sync in background
 
       if (!mounted) return;
-      UiUtils.showSuccess(context, 'Đăng nhập thành công');
+      // 🟢 Điều hướng TRƯỚC rồi mới hiện thông báo (qua global messenger) để tránh
+      //    lỗi "deactivated widget" khi context của Login bị gỡ trong lúc chuyển màn.
       context.go('/home');
+      UiUtils.showSuccess(context, 'Đăng nhập thành công');
     } else {
       UiUtils.showError(context, auth.errorMessage ?? 'Đăng nhập thất bại');
     }

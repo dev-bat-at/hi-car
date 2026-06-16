@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 
+/// Global key cho ScaffoldMessenger. Dùng key này thay vì
+/// ScaffoldMessenger.of(context) để hiển thị SnackBar an toàn ngay cả khi
+/// context của widget gọi đã bị deactivate (vd: vừa điều hướng / minimize app).
+/// Tránh lỗi "Looking up a deactivated widget's ancestor is unsafe".
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 class UiUtils {
   UiUtils._();
 
@@ -37,8 +44,11 @@ class UiUtils {
     required Color backgroundColor,
     required IconData icon,
   }) {
-    ScaffoldMessenger.of(context).removeCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
+    // Ưu tiên dùng global messenger (không phụ thuộc context của caller).
+    final messenger = rootScaffoldMessengerKey.currentState;
+    if (messenger == null) return;
+    messenger.removeCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
         content: Row(
           children: [

@@ -146,9 +146,17 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 showAutostartSettings()
                 result.success(true)
             }
+            "showBatteryOptimizationSettings" -> {
+                showBatteryOptimizationSettings()
+                result.success(true)
+            }
             "syncPrefs" -> {
                 syncPrefsToDeviceProtected()
                 syncFilesToDeviceProtected()
+                result.success(true)
+            }
+            "clearAuthState" -> {
+                clearAuthState()
                 result.success(true)
             }
             "clearGreetingConfig" -> {
@@ -179,6 +187,38 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         } catch (e: Exception) {
             android.util.Log.e("HiCarPlugin", "autoSyncBootFile: error – ${e.message}")
         }
+    }
+
+    // ── Clear auth state (đăng xuất) ──────────────────────────────────────────
+
+    /**
+     * Xoá token đăng nhập khỏi prefs thường VÀ device-protected. syncPrefs chỉ ghi đè
+     * (không xoá), nên sau khi Flutter remove key ở prefs thường thì vùng device-protected
+     * vẫn còn token cũ → BootReceiver sau reboot vẫn tưởng đã đăng nhập và tự phát nhạc.
+     * Hàm này xoá thủ công ở cả 2 nơi để chặn triệt để.
+     */
+    private fun clearAuthState() {
+        val authKeys = listOf("flutter.auth_token", "flutter.user_data")
+
+        try {
+            val editor = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+            authKeys.forEach { editor.remove(it) }
+            editor.apply()
+        } catch (e: Exception) {
+            android.util.Log.w("HiCarPlugin", "clearAuthState: regular prefs – ${e.message}")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val deviceContext = context.createDeviceProtectedStorageContext()
+                val editor = deviceContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+                authKeys.forEach { editor.remove(it) }
+                editor.commit()
+            } catch (e: Exception) {
+                android.util.Log.w("HiCarPlugin", "clearAuthState: device-protected – ${e.message}")
+            }
+        }
+        android.util.Log.i("HiCarPlugin", "clearAuthState done")
     }
 
     // ── Clear audio config (bỏ đặt lời chào / tạm biệt) ───────────────────────
@@ -292,6 +332,26 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
         intent.addCategory(Intent.CATEGORY_HOME)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         context.startActivity(intent)
+    }
+
+    /**
+     * Mở màn hình "Tối ưu hoá pin" của hệ thống (danh sách app) để người dùng TỰ tắt
+     * tối ưu pin cho app. Dùng ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS — KHÔNG cần
+     * quyền REQUEST_IGNORE_BATTERY_OPTIMIZATIONS và hợp lệ với chính sách Google Play
+     * (khác với hộp thoại cấp trực tiếp ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).
+     */
+    private fun showBatteryOptimizationSettings() {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            // Fallback: mở trang chi tiết ứng dụng nếu thiết bị không có màn hình trên.
+            val fallback = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            fallback.data = android.net.Uri.fromParts("package", context.packageName, null)
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try { context.startActivity(fallback) } catch (_: Exception) {}
+        }
     }
 
     private fun handleBluetoothCall(call: MethodCall, result: Result) {

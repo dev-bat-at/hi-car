@@ -74,12 +74,14 @@ class ServiceChannel {
         type: 'native_error',
         details: {'code': e.code, 'audioPath': audioPath},
       );
+      rethrow;
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: playGreeting missing plugin: $e');
       AppLogger.instance.log(
         'Plugin Service chưa đăng ký (playGreeting): $e',
         type: 'native_error',
       );
+      rethrow;
     }
   }
 
@@ -125,6 +127,16 @@ class ServiceChannel {
     }
   }
 
+  /// Mở màn hình "Tối ưu hoá pin" của hệ thống để người dùng tự tắt cho app.
+  /// Cách hợp lệ với Google Play (không dùng hộp thoại cấp quyền trực tiếp).
+  Future<void> showBatteryOptimizationSettings() async {
+    try {
+      await _channel.invokeMethod('showBatteryOptimizationSettings');
+    } catch (e) {
+      debugPrint('ServiceChannel: showBatteryOptimizationSettings error: $e');
+    }
+  }
+
   Future<void> minimizeApp() async {
     try {
       await _channel.invokeMethod('minimizeApp');
@@ -160,6 +172,18 @@ class ServiceChannel {
       debugPrint('ServiceChannel: clearGoodbyeConfig error: $e');
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: clearGoodbyeConfig missing plugin: $e');
+    }
+  }
+
+  /// Xoá token đăng nhập (auth_token, user_data) khỏi cả prefs thường VÀ vùng
+  /// device-protected. Dùng khi đăng xuất để boot/khởi động lại không tự phát nhạc.
+  Future<void> clearAuthState() async {
+    try {
+      await _channel.invokeMethod('clearAuthState');
+    } on PlatformException catch (e) {
+      debugPrint('ServiceChannel: clearAuthState error: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('ServiceChannel: clearAuthState missing plugin: $e');
     }
   }
 

@@ -10,6 +10,9 @@ class AppConstants {
   static const String serviceChannel = 'com.hicar.ora.limited/service';
   static const String bluetoothChannel = 'com.hicar.ora.limited/bluetooth';
 
+  // ===== Connection Modes =====
+  static const String iosCarplayMode = 'ios_carplay';
+
   // ===== SharedPreferences Keys =====
   static const String keyAuthToken = 'auth_token';
   static const String keyUserData = 'user_data';

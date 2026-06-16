@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ===== PERMISSIONS ===== -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -9,11 +10,21 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- neverForLocation: app KHÔNG dùng kết quả quét BLE để suy ra vị trí, chỉ
+         nhận diện thiết bị xe → khai báo để tránh phải xin quyền vị trí (Play). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        tools:targetApi="s"
+        android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Đã GỠ REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: Google Play hạn chế quyền này
+         (kèm hộp thoại cấp trực tiếp). App vẫn ĐỌC được trạng thái tối ưu pin qua
+         PowerManager.isIgnoringBatteryOptimizations (không cần quyền), và HƯỚNG DẪN
+         người dùng tới màn hình Cài đặt tối ưu pin (ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+         để tự tắt — đây là cách hợp lệ với chính sách Play. Logic chạy nền không đổi. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- READ_EXTERNAL_STORAGE đã được gỡ: app chỉ lưu file trong vùng riêng
+         (getApplicationDocumentsDirectory / getTemporaryDirectory), không đọc
+         bộ nhớ ngoài. Gỡ quyền này giúp dễ qua kiểm duyệt Play hơn. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
@@ -95,7 +106,7 @@
             android:foregroundServiceType="specialUse">
             <property 
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" 
-                android:value="explanation_for_special_use"/>
+                android:value="Floating control bubble that lets the driver play or stop the greeting audio while using navigation on the car screen"/>
         </service>
 
         <!-- ===== FLUTTER EMBEDDING ===== -->
@@ -115,6 +126,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Cho phép truy vấn ContentProvider trạng thái kết nối của Android Auto
+             (CarConnection) trên Android 11+ (package visibility). Thiếu khai báo này
+             thì contentResolver.query trả về null → không phát hiện được AA. -->
+        <provider android:authorities="androidx.car.app.connection" />
+        <package android:name="com.google.android.projection.gearhead" />
     </queries>
 
 </manifest>
