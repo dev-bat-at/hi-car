@@ -309,6 +309,8 @@ class AudioProvider extends ChangeNotifier {
       return false;
     }
 
+    debugPrint('AudioProvider: playGreetingViaNative path=$path');
+
     _isStartingPlayback = true;
     try {
       _isNativeGreetingPlaying = true;

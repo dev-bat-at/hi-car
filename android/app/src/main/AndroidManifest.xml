@@ -130,6 +130,7 @@
              (CarConnection) trên Android 11+ (package visibility). Thiếu khai báo này
              thì contentResolver.query trả về null → không phát hiện được AA. -->
         <provider android:authorities="androidx.car.app.connection" />
+        <package android:name="com.google.android.projection.gearhead" />
     </queries>
 
 </manifest>

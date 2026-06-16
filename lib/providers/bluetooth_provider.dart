@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
-import '../data/models/bluetooth_device_model.dart';
-import '../native/bluetooth_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
+import '../data/models/bluetooth_device_model.dart';
+import '../native/bluetooth_channel.dart';
 
 class BluetoothProvider extends ChangeNotifier {
   List<BluetoothDeviceModel> _pairedDevices = [];
@@ -40,9 +40,18 @@ class BluetoothProvider extends ChangeNotifier {
           'BT Handler: action=$action, incoming=$address, target=${_targetDevice?.address}');
       if (action == 'connected' &&
           _targetDevice?.address.toLowerCase() == address.toLowerCase()) {
+        final prefs = await SharedPreferences.getInstance();
+        final mode = prefs.getString('connection_mode') ?? '';
+        if (mode != 'phone_bluetooth') {
+          debugPrint(
+              'BT Handler: MATCH nhưng mode=$mode → bỏ qua (AA/Box do native xử lý)');
+          return;
+        }
         debugPrint('BT Handler: MATCH FOUND, triggering greeting...');
         if (onTargetConnected != null) {
           await onTargetConnected!();
+        } else {
+          debugPrint('BT Handler: onTargetConnected chưa gán → bỏ qua');
         }
       }
     });

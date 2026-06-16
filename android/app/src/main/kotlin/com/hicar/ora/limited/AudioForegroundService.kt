@@ -40,6 +40,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         const val ACTION_PLAY_GREETING_DELAYED = "ACTION_PLAY_GREETING_DELAYED"
         const val ACTION_STOP_AUDIO = "ACTION_STOP_AUDIO"
         const val ACTION_BLUETOOTH_DISCONNECTED = "ACTION_BLUETOOTH_DISCONNECTED"
+        /** AA không dây: BT vừa nối → poll CarConnection đến khi projection sẵn sàng (không phát sớm qua BT). */
+        const val ACTION_AA_WATCH_PROJECTION = "ACTION_AA_WATCH_PROJECTION"
         const val EXTRA_PREFER_BOOT_AUDIO = "EXTRA_PREFER_BOOT_AUDIO"
 
         const val NOTIFICATION_CHANNEL_ID = "hicar_service_channel"
@@ -66,8 +68,9 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         @Volatile var lastGreetingTriggerAtMs: Long = 0L
 
         // 🟢 ANDROID AUTO: chỉ tự phát đúng MỘT lần mỗi phiên kết nối (có dây/không dây).
-        //    Reset khi rời AA (CarConnection=0) hoặc BT ngắt. Không áp dụng cho Bluetooth mode.
         @Volatile var aaGreetingPlayedThisConnection: Boolean = false
+        // Chỉ bật cờ trên khi lời chào do AUTO (không phải bấm nút thủ công).
+        @Volatile var pendingAaAutoGreeting: Boolean = false
 
         // CarConnection (androidx.car.app) – contract CÔNG KHAI để phát hiện Android Auto
         // (cả CÓ DÂY lẫn KHÔNG DÂY) mà không cần thêm dependency / nâng minSdk:
@@ -78,6 +81,12 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         const val CAR_CONNECTION_NOT_CONNECTED = 0
         const val CAR_CONNECTION_NATIVE = 1
         const val CAR_CONNECTION_PROJECTION = 2
+
+        private const val AA_PROJECTION_POLL_MS = 1000L
+        private const val AA_PROJECTION_WATCH_TIMEOUT_MS = 90_000L
+        // AA không dây: sau BT connect, gearhead thường sẵn sàng sau ~12–20s (CarConnection có thể lỗi).
+        private const val AA_GEARHEAD_FALLBACK_MS = 12_000L
+        private const val GEARHEAD_PACKAGE = "com.google.android.projection.gearhead"
     }
 
     private var mediaPlayer: MediaPlayer? = null
@@ -91,6 +100,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     // CarConnection (Android Auto) observer + trạng thái gần nhất.
     private var carConnectionObserver: ContentObserver? = null
     @Volatile private var lastCarConnectionState: Int = CAR_CONNECTION_NOT_CONNECTED
+    private var aaProjectionWatchRunnable: Runnable? = null
+    private var aaProjectionWatchStartedAtMs: Long = 0L
 
     // ==============================
     // Lifecycle
@@ -238,11 +249,19 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             ACTION_BLUETOOTH_DISCONNECTED -> {
                 loadPrefs()
                 cancelDelayedPlay()
+                cancelAaProjectionWatch()
                 stopPlayback()
-                // Ngắt kết nối → reset debounce để LẦN kết nối SAU được phát lại.
                 lastGreetingTriggerAtMs = 0L
-                if (connectionMode == "phone_android_auto") {
+            }
+            ACTION_AA_WATCH_PROJECTION -> {
+                loadPrefs()
+                if (connectionMode == "phone_android_auto" && autoPlayEnabled) {
+                    // Phiên kết nối AA mới (BT vừa nối) → reset cờ để không bị kẹt từ lần phát cũ/thủ công.
                     aaGreetingPlayedThisConnection = false
+                    pendingAaAutoGreeting = false
+                    lastGreetingTriggerAtMs = 0L
+                    Log.d("HiCarAA", "BT connected (AA mode) → bắt đầu watch projection")
+                    startAaProjectionWatch()
                 }
             }
         }
@@ -267,10 +286,14 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                     handleCarConnectionState(queryCarConnectionType())
                 }
             }
-            contentResolver.registerContentObserver(uri, false, observer)
+            contentResolver.registerContentObserver(uri, true, observer)
             carConnectionObserver = observer
             // Đọc trạng thái hiện tại ngay (phòng khi đã kết nối sẵn lúc service khởi động).
             handleCarConnectionState(queryCarConnectionType())
+            loadPrefs()
+            if (connectionMode == "phone_android_auto") {
+                tryTriggerAaIfProjected("service_init")
+            }
             Log.d("HiCarAA", "CarConnection monitor registered")
         } catch (e: Exception) {
             Log.w("HiCarAA", "setupCarConnectionMonitor failed: ${e.message}")
@@ -280,14 +303,103 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     private fun queryCarConnectionType(): Int {
         return try {
             val uri = Uri.parse("content://$CAR_CONNECTION_AUTHORITY")
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val idx = cursor.getColumnIndex(CAR_CONNECTION_STATE_COLUMN)
-                if (idx >= 0 && cursor.moveToNext()) cursor.getInt(idx)
-                else CAR_CONNECTION_NOT_CONNECTED
-            } ?: CAR_CONNECTION_NOT_CONNECTED
+            // ⚠️ Phải truyền projection (như androidx.car.app.connection.CarConnection) — query(..., null, ...)
+            //    gây NPE trên một số thiết bị: "getClass() on a null object reference".
+            val projection = arrayOf(CAR_CONNECTION_STATE_COLUMN)
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(CAR_CONNECTION_STATE_COLUMN)
+                    if (idx >= 0) {
+                        val state = cursor.getInt(idx)
+                        Log.d("HiCarAA", "queryCarConnectionType=$state")
+                        return state
+                    }
+                }
+                Log.w("HiCarAA", "queryCarConnectionType: empty cursor")
+                CAR_CONNECTION_NOT_CONNECTED
+            } ?: run {
+                Log.w("HiCarAA", "queryCarConnectionType: cursor null")
+                CAR_CONNECTION_NOT_CONNECTED
+            }
         } catch (e: Exception) {
             Log.w("HiCarAA", "queryCarConnectionType failed: ${e.message}")
             CAR_CONNECTION_NOT_CONNECTED
+        }
+    }
+
+    /** Fallback khi CarConnection provider lỗi: gearhead (app Android Auto) đang chạy. */
+    private fun isGearheadRunning(): Boolean {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+            @Suppress("DEPRECATION")
+            am.runningAppProcesses?.any { proc ->
+                proc.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE &&
+                    (proc.processName.contains("gearhead") ||
+                        proc.processName.contains(GEARHEAD_PACKAGE))
+            } == true
+        } catch (e: Exception) {
+            Log.w("HiCarAA", "isGearheadRunning failed: ${e.message}")
+            false
+        }
+    }
+
+    private fun triggerAaGreetingOnce(source: String) {
+        cancelAaProjectionWatch()
+        lastCarConnectionState = CAR_CONNECTION_PROJECTION
+        loadPrefs()
+        if (connectionMode != "phone_android_auto" || !autoPlayEnabled) return
+        Log.d("HiCarAA", "AA ready ($source) → trigger greeting")
+        triggerGreetingDebounced(useBootAudio = false, source = source)
+    }
+
+    /** Poll CarConnection khi ContentObserver không báo (một số máy/AA không dây). */
+    private fun startAaProjectionWatch() {
+        cancelAaProjectionWatch()
+        aaProjectionWatchStartedAtMs = SystemClock.elapsedRealtime()
+        aaProjectionWatchRunnable = object : Runnable {
+            override fun run() {
+                loadPrefs()
+                if (connectionMode != "phone_android_auto" || !autoPlayEnabled) {
+                    cancelAaProjectionWatch()
+                    return
+                }
+                val state = queryCarConnectionType()
+                val elapsed = SystemClock.elapsedRealtime() - aaProjectionWatchStartedAtMs
+                if (state == CAR_CONNECTION_PROJECTION) {
+                    Log.d("HiCarAA", "AA projection watch: PROJECTION detected")
+                    triggerAaGreetingOnce("carconnection_poll")
+                    return
+                }
+                if (isGearheadRunning() && elapsed >= AA_GEARHEAD_FALLBACK_MS) {
+                    Log.d("HiCarAA", "AA projection watch: gearhead fallback (elapsed=${elapsed}ms)")
+                    triggerAaGreetingOnce("gearhead_fallback")
+                    return
+                }
+                if (elapsed > AA_PROJECTION_WATCH_TIMEOUT_MS) {
+                    Log.w("HiCarAA", "AA projection watch timeout (${AA_PROJECTION_WATCH_TIMEOUT_MS}ms)")
+                    cancelAaProjectionWatch()
+                    return
+                }
+                handler.postDelayed(this, AA_PROJECTION_POLL_MS)
+            }
+        }
+        handler.post(aaProjectionWatchRunnable!!)
+    }
+
+    private fun cancelAaProjectionWatch() {
+        aaProjectionWatchRunnable?.let { handler.removeCallbacks(it) }
+        aaProjectionWatchRunnable = null
+        aaProjectionWatchStartedAtMs = 0L
+    }
+
+    private fun tryTriggerAaIfProjected(source: String) {
+        when {
+            queryCarConnectionType() == CAR_CONNECTION_PROJECTION ->
+                triggerAaGreetingOnce(source)
+            isGearheadRunning() ->
+                triggerAaGreetingOnce("$source+gearhead")
+            else ->
+                Log.d("HiCarAA", "tryTriggerAaIfProjected($source): chưa sẵn sàng")
         }
     }
 
@@ -299,11 +411,10 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         when (state) {
             CAR_CONNECTION_PROJECTION -> {
-                // Chỉ tự phát khi người dùng đã chọn mode Android Auto.
                 loadPrefs()
                 if (connectionMode == "phone_android_auto" && autoPlayEnabled) {
                     Log.d("HiCarAA", "Projection started → trigger greeting")
-                    triggerGreetingDebounced(useBootAudio = false, source = "carconnection")
+                    triggerAaGreetingOnce("carconnection_observer")
                 } else {
                     Log.d("HiCarAA", "Projection started but mode=$connectionMode, autoPlay=$autoPlayEnabled → skip")
                 }
@@ -312,6 +423,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 loadPrefs()
                 if (connectionMode == "phone_android_auto") {
                     Log.d("HiCarAA", "Projection ended → stop playback")
+                    cancelAaProjectionWatch()
                     cancelDelayedPlay()
                     stopPlayback()
                     lastGreetingTriggerAtMs = 0L
@@ -324,7 +436,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     /**
      * Lên lịch phát lời chào với chống lặp theo ngữ cảnh:
      * - Boot (Box): cờ một-lần/tiến-trình — broadcast boot có thể cách nhau hàng chục giây.
-     * - Android Auto: cờ một-lần/phiên kết nối — CarConnection, BT, onGetRoot chỉ phát 1 lần.
+     * - Android Auto: cờ một-lần/phiên — chỉ bật khi nhạc THỰC SỰ bắt đầu phát (CarConnection=PROJECTION).
      * - Bluetooth: debounce theo thời gian, reset khi ngắt kết nối.
      */
     private fun triggerGreetingDebounced(useBootAudio: Boolean, source: String) {
@@ -357,7 +469,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         lastGreetingTriggerAtMs = now
 
         if (connectionMode == "phone_android_auto") {
-            aaGreetingPlayedThisConnection = true
+            pendingAaAutoGreeting = true
         }
 
         Log.d("HiCarService", "Greeting trigger ($source) → scheduleDelayedGreeting")
@@ -406,6 +518,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             try { contentResolver.unregisterContentObserver(it) } catch (_: Exception) {}
         }
         carConnectionObserver = null
+        cancelAaProjectionWatch()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -556,6 +669,16 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 setVolume(1.0f, 1.0f)
                 prepare()
                 start()
+
+                // AA auto-play: chỉ đánh dấu "đã phát" khi trigger TỰ ĐỘNG (không phải nút thủ công).
+                if (type == "greeting") {
+                    loadPrefs()
+                    if (connectionMode == "phone_android_auto" && pendingAaAutoGreeting) {
+                        aaGreetingPlayedThisConnection = true
+                        pendingAaAutoGreeting = false
+                        Log.d("HiCarAA", "AA auto-greeting started → session flag set")
+                    }
+                }
                 
                 // 🟢 SYNCED STATE: Update playback state only after successful start
                 if (type == "greeting") {
@@ -592,6 +715,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
     private fun stopPlayback(releaseOnly: Boolean = false) {
         cancelDelayedPlay()
+        pendingAaAutoGreeting = false
         mediaPlayer?.let {
             try {
                 if (it.isPlaying) it.stop()

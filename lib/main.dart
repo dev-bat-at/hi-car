@@ -74,20 +74,38 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _audioProvider = AudioProvider()..init();
     _overlayProvider = OverlayProvider()..init();
     _settingsProvider = SettingsProvider()..init();
-    _bluetoothProvider = BluetoothProvider()..init();
+    _bluetoothProvider = BluetoothProvider();
 
-    // 🟢 Chế độ Bluetooth: Khi vừa kết nối thành công thì phát nhạc (nếu app đang mở).
-    //    Android Auto do native service tự phát (CarConnection) — không phát thêm từ Flutter.
+    // ⚠️ Gán callback TRƯỚC init() — tránh race: BT connect sớm khiến MATCH FOUND
+    //    nhưng onTargetConnected còn null hoặc chưa sẵn sàng.
     _bluetoothProvider.onTargetConnected = () async {
-      // Chưa đăng nhập thì tuyệt đối không phát nhạc.
-      if (!await _isLoggedIn()) return false;
-      if (_settingsProvider.connectionMode == 'phone_bluetooth' &&
-          _settingsProvider.autoPlayEnabled) {
-        debugPrint('Main: Target Bluetooth connected, triggering greeting...');
-        return await _audioProvider.playGreetingViaNative();
+      if (!await _isLoggedIn()) {
+        debugPrint('Main: BT connect skip – chưa đăng nhập');
+        return false;
       }
-      return false;
+
+      // Đọc trực tiếp từ prefs — SettingsProvider.init() async có thể chưa xong.
+      final prefs = await SharedPreferences.getInstance();
+      final mode = prefs.getString('connection_mode') ?? '';
+      final autoPlay = prefs.getBool(AppConstants.keyAutoPlayEnabled) ?? true;
+
+      if (mode != 'phone_bluetooth') {
+        debugPrint(
+            'Main: BT connect skip – mode=$mode (Flutter chỉ phát cho phone_bluetooth)');
+        return false;
+      }
+      if (!autoPlay) {
+        debugPrint('Main: BT connect skip – autoPlay tắt');
+        return false;
+      }
+
+      debugPrint('Main: Target Bluetooth connected, triggering greeting...');
+      final ok = await _audioProvider.playGreetingViaNative();
+      debugPrint('Main: playGreetingViaNative → ${ok ? "OK" : "FAILED"}');
+      return ok;
     };
+
+    _bluetoothProvider.init();
 
     // Listen to audio provider to sync state to overlay
     _audioProvider.addListener(_updateOverlayState);

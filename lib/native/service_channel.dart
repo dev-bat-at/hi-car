@@ -74,12 +74,14 @@ class ServiceChannel {
         type: 'native_error',
         details: {'code': e.code, 'audioPath': audioPath},
       );
+      rethrow;
     } on MissingPluginException catch (e) {
       debugPrint('ServiceChannel: playGreeting missing plugin: $e');
       AppLogger.instance.log(
         'Plugin Service chưa đăng ký (playGreeting): $e',
         type: 'native_error',
       );
+      rethrow;
     }
   }
 
