@@ -211,4 +211,51 @@ class ServiceChannel {
       );
     }
   }
+
+  Future<String> getDiagnosticLogErrors() async {
+    try {
+      final result =
+          await _channel.invokeMethod<String>('getDiagnosticLogErrors');
+      return result ?? '';
+    } catch (e) {
+      debugPrint('ServiceChannel: getDiagnosticLogErrors error: $e');
+      return '';
+    }
+  }
+
+  Future<String> getDiagnosticLogFull() async {
+    try {
+      final result = await _channel.invokeMethod<String>('getDiagnosticLogFull');
+      return result ?? '';
+    } catch (e) {
+      debugPrint('ServiceChannel: getDiagnosticLogFull error: $e');
+      return '';
+    }
+  }
+
+  Future<bool> hasDiagnosticErrors() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('hasDiagnosticErrors');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> clearDiagnosticLog() async {
+    try {
+      await _channel.invokeMethod('clearDiagnosticLog');
+    } catch (e) {
+      debugPrint('ServiceChannel: clearDiagnosticLog error: $e');
+    }
+  }
+
+  /// Inject sample adb-style native log lines for bug-report UI testing.
+  Future<void> appendDiagnosticDemo(String scenario) async {
+    try {
+      await _channel.invokeMethod('appendDiagnosticDemo', {'scenario': scenario});
+    } catch (e) {
+      debugPrint('ServiceChannel: appendDiagnosticDemo error: $e');
+    }
+  }
 }

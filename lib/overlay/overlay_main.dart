@@ -280,7 +280,8 @@ class _OverlayStripState extends State<OverlayStrip> {
                   decoration: BoxDecoration(
                     color: Colors.black87,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                    border:
+                        Border.all(color: Colors.redAccent.withOpacity(0.5)),
                   ),
                   child: Text(
                     _errorMessage!,

@@ -1,10 +1,13 @@
 package com.hicar.ora.limited
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Build
+import android.os.SystemClock
 import android.os.UserManager
 import java.io.File
 
@@ -14,49 +17,97 @@ import java.io.File
  */
 class BootReceiver : BroadcastReceiver() {
 
+    companion object {
+        /** Retry boot greeting sau 45s / 120s / 300s nếu box khởi động chậm hoặc audio subsystem chưa sẵn sàng. */
+        private val BOOT_ALARM_DELAYS_MS = longArrayOf(45_000L, 120_000L, 300_000L)
+
+        fun scheduleBootRetryAlarms(context: Context) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            BOOT_ALARM_DELAYS_MS.forEachIndexed { index, delayMs ->
+                val intent = Intent(context, AudioForegroundService::class.java).apply {
+                    action = AudioForegroundService.ACTION_BOOT_RETRY_GREETING
+                    putExtra(AudioForegroundService.EXTRA_PREFER_BOOT_AUDIO, true)
+                }
+                val pending = PendingIntent.getService(
+                    context,
+                    100 + index,
+                    intent,
+                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                )
+                alarmManager.set(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    SystemClock.elapsedRealtime() + delayMs,
+                    pending
+                )
+                HiCarDiagnosticLog.d("HiCarBoot", "Scheduled boot retry alarm #${index + 1} in ${delayMs}ms")
+            }
+        }
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         val validActions = listOf(
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_REBOOT,
+            Intent.ACTION_USER_UNLOCKED,
+            Intent.ACTION_USER_PRESENT,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON"
         )
 
-        if (intent.action in validActions) {
-            val prefs = getAvailablePrefs(context)
-            
-            // Đọc mode từ prefs (Flutter lưu với prefix flutter.)
-            val connectionMode = prefs.getString("flutter.connection_mode", "android_screen_mode") ?: "android_screen_mode"
+        if (intent.action !in validActions) return
 
-            // Mode Box mới được phép tự phát nhạc sau khi restart. Các mode còn lại đợi app/BT/AA trigger.
-            if (connectionMode != "android_box_mode") return
-            
-            // 🟢 CHƯA ĐĂNG NHẬP THÌ KHÔNG PHÁT NHẠC
-            if (!prefs.contains("flutter.auth_token")) return
+        HiCarDiagnosticLog.init(context)
+        HiCarDiagnosticLog.markBootSession()
 
-            if (!hasGreetingAudio(context, prefs)) return
+        val prefs = getAvailablePrefs(context)
+        val connectionMode = prefs.getString("flutter.connection_mode", "android_screen_mode") ?: "android_screen_mode"
 
-            android.util.Log.d("HiCarBoot", "Boot trigger OK – connectionMode=$connectionMode, action=${intent.action}")
+        if (connectionMode != "android_box_mode") {
+            HiCarDiagnosticLog.d("HiCarBoot", "Boot skip – mode=$connectionMode (not box)")
+            return
+        }
 
-            // Dùng DELAYED để service đợi audio system khởi tạo xong trước khi phát (tối thiểu 5 giây).
-            val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
-                action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
-                putExtra(AudioForegroundService.EXTRA_PREFER_BOOT_AUDIO, true)
+        if (!prefs.contains("flutter.auth_token")) {
+            HiCarDiagnosticLog.e("HiCarBoot", "Boot skip – no auth_token in prefs")
+            return
+        }
+
+        if (!hasGreetingAudio(context, prefs)) {
+            HiCarDiagnosticLog.e("HiCarBoot", "Boot skip – no greeting audio file")
+            return
+        }
+
+        // USER_UNLOCKED / USER_PRESENT: retry nếu boot sớm thất bại (audio subsystem cần unlock).
+        val isUnlockRetry = intent.action == Intent.ACTION_USER_UNLOCKED ||
+            intent.action == Intent.ACTION_USER_PRESENT
+
+        if (isUnlockRetry && AudioForegroundService.bootGreetingHandled) {
+            HiCarDiagnosticLog.d("HiCarBoot", "Unlock retry skip – boot greeting đã phát thành công")
+            return
+        }
+
+        HiCarDiagnosticLog.d("HiCarBoot", "Boot trigger OK – connectionMode=$connectionMode, action=${intent.action}")
+
+        val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
+            action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
+            putExtra(AudioForegroundService.EXTRA_PREFER_BOOT_AUDIO, true)
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
             }
-
-            // Mode Box: chỉ phát ngầm (Background), không được tự ý mở App (UI).
-            // Nhạc sẽ vang lên ở dưới nền, màn hình xe vẫn giữ nguyên trạng thái cũ.
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            // Chỉ lên lịch alarm retry cho boot thật (không phải unlock retry).
+            if (!isUnlockRetry) {
+                scheduleBootRetryAlarms(context)
             }
+        } catch (e: Exception) {
+            HiCarDiagnosticLog.e("HiCarBoot", "startForegroundService failed: ${e.message}")
+            e.printStackTrace()
         }
     }
 
@@ -84,7 +135,7 @@ class BootReceiver : BroadcastReceiver() {
                 val regularPrefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 if (regularPrefs.all.isNotEmpty()) return regularPrefs
             } catch (e: Exception) {
-                android.util.Log.w("HiCarBoot", "getAvailablePrefs: credential storage không đọc được – ${e.message}")
+                HiCarDiagnosticLog.w("HiCarBoot", "getAvailablePrefs: credential storage không đọc được – ${e.message}")
             }
         }
 
@@ -93,22 +144,22 @@ class BootReceiver : BroadcastReceiver() {
 
     private fun hasGreetingAudio(context: Context, prefs: SharedPreferences): Boolean {
         val configuredPath = prefs.getString("flutter.greeting_audio_path", "") ?: ""
-        android.util.Log.d("HiCarBoot", "hasGreetingAudio: flutter.greeting_audio_path=$configuredPath")
+        HiCarDiagnosticLog.d("HiCarBoot", "hasGreetingAudio: flutter.greeting_audio_path=$configuredPath")
 
         if (configuredPath.isNotEmpty()) {
             val exists = File(configuredPath).exists()
-            android.util.Log.d("HiCarBoot", "hasGreetingAudio: regular path exists=$exists")
+            HiCarDiagnosticLog.d("HiCarBoot", "hasGreetingAudio: regular path exists=$exists")
             if (exists) return true
         }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            android.util.Log.w("HiCarBoot", "hasGreetingAudio: API < N, no boot_greeting fallback → SKIP")
+            HiCarDiagnosticLog.w("HiCarBoot", "hasGreetingAudio: API < N, no boot_greeting fallback → SKIP")
             return false
         }
 
         val protectedContext = context.createDeviceProtectedStorageContext()
         val bootFile = File(protectedContext.filesDir, "boot_greeting.mp3")
-        android.util.Log.d("HiCarBoot", "hasGreetingAudio: boot_greeting.mp3 path=${bootFile.absolutePath}, exists=${bootFile.exists()}, size=${if (bootFile.exists()) bootFile.length() else 0}")
+        HiCarDiagnosticLog.d("HiCarBoot", "hasGreetingAudio: boot_greeting.mp3 path=${bootFile.absolutePath}, exists=${bootFile.exists()}, size=${if (bootFile.exists()) bootFile.length() else 0}")
         return bootFile.exists()
     }
 }

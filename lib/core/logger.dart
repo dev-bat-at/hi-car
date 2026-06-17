@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/services/api_service.dart';
 import './utils/device_utils.dart';
 
 class AppLog {
-  final String id; // Unique ID for deletion
+  final String id;
   final DateTime timestamp;
   final String message;
   final String? type;
@@ -24,6 +25,14 @@ class AppLogger extends ChangeNotifier {
 
   final List<AppLog> _logs = [];
   List<AppLog> get logs => List.unmodifiable(_logs.reversed);
+
+  static const errorTypes = {
+    'native_error',
+    'sync_error',
+    'playback_error',
+    'native_playback_error',
+    'network_error',
+  };
 
   void log(String message, {String? type, Map<String, dynamic>? details}) {
     final newLog = AppLog(
@@ -51,41 +60,80 @@ class AppLogger extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sends a log to the server and removes it from local list upon success.
-  Future<void> sendReport(AppLog log) async {
-    final deviceContext = await DeviceUtils.GetDeviceContext();
+  List<AppLog> get errorLogs =>
+      logs.where((l) => errorTypes.contains(l.type ?? '')).toList();
 
-    // Mapping log type to server-allowed error_type: bluetooth, audio, sync, permission, other
-    String serverErrorType = 'other';
+  String _mapErrorType(AppLog log) {
     final type = log.type?.toLowerCase() ?? '';
     final msg = log.message.toLowerCase();
 
     if (type.contains('network') ||
         type.contains('sync') ||
         type.contains('download')) {
-      serverErrorType = 'sync';
-    } else if (type.contains('playback') || type.contains('audio')) {
-      serverErrorType = 'audio';
-    } else if (type.contains('bluetooth') || msg.contains('bluetooth')) {
-      serverErrorType = 'bluetooth';
-    } else if (type.contains('permission')) {
-      serverErrorType = 'permission';
+      return 'sync';
     }
+    if (type.contains('playback') || type.contains('audio')) {
+      return 'audio';
+    }
+    if (type.contains('bluetooth') || msg.contains('bluetooth')) {
+      return 'bluetooth';
+    }
+    if (type.contains('permission')) {
+      return 'permission';
+    }
+    return 'other';
+  }
 
+  Future<String> _resolveSyncStatus() async {
     try {
-      await ApiService.instance.logError({
-        'error_type': serverErrorType,
-        'description': log.message,
-        'sync_status': 'unknown',
-        ...deviceContext,
-        'log_details': log.details?.toString(),
-      });
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getString('last_sync_time');
+      if (lastSync != null && lastSync.isNotEmpty) return 'synced';
+    } catch (_) {}
+    return 'unknown';
+  }
 
-      // SUCCESS: Remove from local list
-      removeLog(log.id);
-    } catch (e) {
-      // Keep in list if failed so user can try again
-      rethrow;
+  String _buildDescription({
+    required AppLog log,
+    String? userNote,
+    String? diagnosticLog,
+  }) {
+    final parts = <String>[];
+    if (userNote != null && userNote.trim().isNotEmpty) {
+      parts.add(userNote.trim());
     }
+    parts.add(log.message);
+    if (diagnosticLog != null && diagnosticLog.trim().isNotEmpty) {
+      parts.add('\n--- HiCar adb log ---\n${diagnosticLog.trim()}');
+    }
+    return parts.join('\n\n');
+  }
+
+  /// Sends error report to server (API: POST /api/logs/error).
+  Future<void> sendReport(
+    AppLog log, {
+    String? userNote,
+    String? diagnosticLog,
+  }) async {
+    final deviceContext = await DeviceUtils.getDeviceContext();
+    final syncStatus = await _resolveSyncStatus();
+    final description = _buildDescription(
+      log: log,
+      userNote: userNote,
+      diagnosticLog: diagnosticLog,
+    );
+
+    await ApiService.instance.logError({
+      'error_type': _mapErrorType(log),
+      'description': description,
+      'device_id': deviceContext['device_id'],
+      'device_name': deviceContext['device_name'],
+      'device_model': deviceContext['device_model'],
+      'os_version': deviceContext['os_version'],
+      'app_version': deviceContext['app_version'],
+      'sync_status': syncStatus,
+    });
+
+    removeLog(log.id);
   }
 }

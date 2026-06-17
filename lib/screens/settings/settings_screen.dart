@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -12,6 +13,7 @@ import '../../providers/overlay_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../data/services/api_client.dart';
 import '../../core/logger.dart';
+import '../../native/service_channel.dart';
 import 'package:intl/intl.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -323,16 +325,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Chỉ những type này mới được coi là "lỗi thật" để gửi báo cáo.
-  static const _errorTypes = {
-    'native_error',
-    'sync_error',
-    'playback_error',
-    'native_playback_error',
-    'network_error',
-    'native_warning',
-  };
-
   void _showBugReportDialog(BuildContext context) {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
@@ -341,24 +333,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => ListenableBuilder(
         listenable: AppLogger.instance,
         builder: (context, _) {
-          // Lọc: chỉ hiển thị log lỗi thật — bỏ các hành động bình thường
-          final logs = AppLogger.instance.logs
-              .where((l) => _errorTypes.contains(l.type ?? ''))
-              .toList();
+          final logs = AppLogger.instance.errorLogs;
 
           return AlertDialog(
             backgroundColor: AppColors.cardElevated,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16.r)),
             insetPadding: EdgeInsets.symmetric(
-                horizontal: isLandscape ? 140.w : 24.w, vertical: 20.h),
+                horizontal: isLandscape ? 80.w : 20.w, vertical: 16.h),
             contentPadding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
             titlePadding: EdgeInsets.fromLTRB(16.w, 16.h, 8.w, 0),
             title: Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Lịch sử lỗi hệ thống',
+                    'Báo cáo lỗi hệ thống',
                     style: TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 14.sp,
@@ -374,9 +363,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
               ],
             ),
-            content: Container(
-              width: isLandscape ? 0.45.sw : double.maxFinite,
-              constraints: BoxConstraints(maxHeight: 300.h),
+            content: SizedBox(
+              width: isLandscape ? 0.55.sw : double.maxFinite,
               child: logs.isEmpty
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
@@ -385,83 +373,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: AppColors.success, size: 48.sp),
                         SizedBox(height: 16.h),
                         Text(
-                          'Hiện tại chưa ghi nhận lỗi nào.',
+                          'Chưa ghi nhận lỗi nào.\nLỗi từ API/native sẽ hiện ở đây.',
                           style: TextStyle(
                               color: AppColors.textSecondary, fontSize: 13.sp),
                           textAlign: TextAlign.center,
                         ),
                       ],
                     )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: logs.length,
-                      separatorBuilder: (_, __) =>
-                          Divider(color: AppColors.border, height: 8.h),
-                      itemBuilder: (context, index) {
-                        final log = logs[index];
-                        final timeStr =
-                            DateFormat('HH:mm:ss').format(log.timestamp);
+                  : ConstrainedBox(
+                      constraints: BoxConstraints(
+                          maxHeight: isLandscape ? 320.h : 360.h),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: logs.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(color: AppColors.border, height: 12.h),
+                        itemBuilder: (context, index) {
+                          final log = logs[index];
+                          final timeStr =
+                              DateFormat('HH:mm:ss').format(log.timestamp);
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 6.w, vertical: 2.h),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _getLogColor(log.type).withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(4.r),
-                                  ),
-                                  child: Text(
-                                    log.type?.toUpperCase() ?? 'INFO',
-                                    style: TextStyle(
-                                      color: _getLogColor(log.type),
-                                      fontSize: 9.sp,
-                                      fontWeight: FontWeight.bold,
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 6.w, vertical: 2.h),
+                                    decoration: BoxDecoration(
+                                      color: _getLogColor(log.type)
+                                          .withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(4.r),
+                                    ),
+                                    child: Text(
+                                      log.type?.toUpperCase() ?? 'ERROR',
+                                      style: TextStyle(
+                                        color: _getLogColor(log.type),
+                                        fontSize: 9.sp,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                SizedBox(width: 8.w),
-                                Text(
-                                  timeStr,
-                                  style: TextStyle(
-                                      color: AppColors.textHint,
-                                      fontSize: 10.sp),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 4.h),
-                            Text(
-                              log.message,
-                              style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 12.sp),
-                            ),
-                            SizedBox(height: 8.h),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: ElevatedButton.icon(
-                                onPressed: () => _sendLog(context, log),
-                                icon: Icon(Icons.send_rounded, size: 12.sp),
-                                label: Text('Gửi báo cáo',
-                                    style: TextStyle(fontSize: 11.sp)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 12.w, vertical: 0),
-                                  minimumSize: Size(0, 28.h),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8.r)),
+                                  SizedBox(width: 8.w),
+                                  Text(
+                                    timeStr,
+                                    style: TextStyle(
+                                        color: AppColors.textHint,
+                                        fontSize: 10.sp),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 6.h),
+                              Text(
+                                log.message,
+                                style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 12.sp),
+                              ),
+                              SizedBox(height: 8.h),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _showSendBugSheet(context, log);
+                                  },
+                                  icon: Icon(Icons.send_rounded, size: 14.sp),
+                                  label: Text('Gửi báo cáo',
+                                      style: TextStyle(fontSize: 11.sp)),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppColors.primary,
+                                    side: BorderSide(color: AppColors.primary),
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 12.w, vertical: 6.h),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        );
-                      },
+                            ],
+                          );
+                        },
+                      ),
                     ),
             ),
             actions: [
@@ -477,6 +469,169 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showSendBugSheet(BuildContext context, AppLog log) {
+    final noteController = TextEditingController();
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cardElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+      ),
+      builder: (sheetContext) {
+        return FutureBuilder<String>(
+          future: ServiceChannel.instance.getDiagnosticLogErrors(),
+          builder: (context, snapshot) {
+            final adbLog = snapshot.data ?? '';
+            final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40.w,
+                        height: 4.h,
+                        decoration: BoxDecoration(
+                          color: AppColors.border,
+                          borderRadius: BorderRadius.circular(2.r),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    Text(
+                      'Gửi báo cáo lỗi',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    Container(
+                      padding: EdgeInsets.all(10.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(
+                        log.message,
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12.sp,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    TextField(
+                      controller: noteController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: 'Mô tả thêm (tuỳ chọn)',
+                        hintText:
+                            'Ví dụ: Tắt xe qua đêm, sáng không tự phát...',
+                        labelStyle: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 12.sp),
+                        hintStyle: TextStyle(
+                            color: AppColors.textHint, fontSize: 11.sp),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        filled: true,
+                        fillColor: AppColors.background,
+                      ),
+                      style: TextStyle(
+                          color: AppColors.textPrimary, fontSize: 13.sp),
+                    ),
+                    if (adbLog.isNotEmpty) ...[
+                      SizedBox(height: 12.h),
+                      Text(
+                        'Log kỹ thuật (adb)',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 6.h),
+                      Container(
+                        constraints: BoxConstraints(
+                          maxHeight: isLandscape ? 120.h : 160.h,
+                        ),
+                        padding: EdgeInsets.all(8.w),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1E1E),
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            adbLog,
+                            style: TextStyle(
+                              color: const Color(0xFFB5CEA8),
+                              fontSize: 9.sp,
+                              fontFamily: 'monospace',
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    SizedBox(height: 16.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('Huỷ',
+                                style: TextStyle(color: AppColors.textHint)),
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              await _sendLog(
+                                sheetContext,
+                                log,
+                                userNote: noteController.text,
+                                diagnosticLog: adbLog,
+                              );
+                            },
+                            icon: Icon(Icons.send_rounded, size: 16.sp),
+                            label:
+                                Text('Gửi', style: TextStyle(fontSize: 13.sp)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(vertical: 12.h),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Color _getLogColor(String? type) {
     switch (type) {
       case 'native_error':
@@ -484,7 +639,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       case 'native_playback_error':
         return AppColors.error;
       case 'sync_error':
-      case 'native_warning':
         return AppColors.warning;
       case 'playback_error':
         return Colors.orange;
@@ -493,12 +647,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _sendLog(BuildContext context, AppLog log) async {
+  Future<void> _sendLog(
+    BuildContext context,
+    AppLog log, {
+    String? userNote,
+    String? diagnosticLog,
+  }) async {
     EasyLoading.show(status: 'Đang gửi...');
     try {
-      await AppLogger.instance.sendReport(log);
+      await AppLogger.instance.sendReport(
+        log,
+        userNote: userNote,
+        diagnosticLog: diagnosticLog,
+      );
       EasyLoading.dismiss();
       if (context.mounted) {
+        Navigator.pop(context);
         UiUtils.showSuccess(context, 'Đã gửi báo cáo lỗi thành công!');
       }
     } catch (e) {

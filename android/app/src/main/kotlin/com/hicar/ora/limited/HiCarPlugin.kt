@@ -167,6 +167,29 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
                 clearAudioConfig("goodbye")
                 result.success(true)
             }
+            "getDiagnosticLogErrors" -> {
+                HiCarDiagnosticLog.init(context)
+                result.success(HiCarDiagnosticLog.getErrorLog())
+            }
+            "getDiagnosticLogFull" -> {
+                HiCarDiagnosticLog.init(context)
+                result.success(HiCarDiagnosticLog.getFullLog())
+            }
+            "hasDiagnosticErrors" -> {
+                HiCarDiagnosticLog.init(context)
+                result.success(HiCarDiagnosticLog.hasErrorLines())
+            }
+            "clearDiagnosticLog" -> {
+                HiCarDiagnosticLog.init(context)
+                HiCarDiagnosticLog.clear()
+                result.success(true)
+            }
+            "appendDiagnosticDemo" -> {
+                HiCarDiagnosticLog.init(context)
+                val scenario = call.argument<String>("scenario") ?: "boot"
+                appendDiagnosticDemo(scenario)
+                result.success(true)
+            }
             "openApp" -> openApp(result)
             else -> result.notImplemented()
         }
@@ -402,5 +425,31 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
     private fun startServiceSafe(intent: Intent) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
         else context.startService(intent)
+    }
+
+    /** Demo adb-style lines for testing bug report UI (Settings → Báo cáo lỗi). */
+    private fun appendDiagnosticDemo(scenario: String) {
+        HiCarDiagnosticLog.markBootSession()
+        when (scenario) {
+            "boot" -> {
+                HiCarDiagnosticLog.d("HiCarBoot", "Boot trigger OK – connectionMode=android_box_mode, action=BOOT_COMPLETED")
+                HiCarDiagnosticLog.d("HiCarService", "scheduleDelayedGreeting: delay=5000ms, useBootAudio=true")
+                HiCarDiagnosticLog.w("HiCarAudio", "playAudio: focus denied, retry 1/4 in 2500ms...")
+                HiCarDiagnosticLog.e("HiCarService", "Boot greeting (intent) bỏ qua – đã phát thành công trong tiến trình này")
+            }
+            "boot_fail" -> {
+                HiCarDiagnosticLog.d("HiCarBoot", "Boot trigger OK – connectionMode=android_box_mode, action=LOCKED_BOOT_COMPLETED")
+                HiCarDiagnosticLog.w("HiCarAudio", "playAudio: focus denied, retry 4/4 in 2500ms...")
+                HiCarDiagnosticLog.e("HiCarAudio", "playAudio: file does NOT exist at path=/data/.../missing.mp3")
+            }
+            "sync" -> {
+                HiCarDiagnosticLog.d("HiCarSync", "syncPrefsToDeviceProtected OK")
+                HiCarDiagnosticLog.e("HiCarSync", "copyFileToProtected ERROR boot_greeting.mp3 – source NOT found")
+            }
+            else -> {
+                HiCarDiagnosticLog.w("HiCarService", "Demo scenario: $scenario")
+                HiCarDiagnosticLog.e("HiCarAudio", "Error playing audio: demo MediaPlayer failure")
+            }
+        }
     }
 }

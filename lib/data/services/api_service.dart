@@ -148,10 +148,6 @@ class ApiService {
   /// Gửi log lỗi lên server.
   /// API: POST /api/logs/error
   Future<void> logError(Map<String, dynamic> errorData) async {
-    try {
-      await _client.post(ApiEndpoints.errorLog, data: errorData);
-    } catch (_) {
-      // Don't throw if logging fails
-    }
+    await _client.post(ApiEndpoints.errorLog, data: errorData);
   }
 }
