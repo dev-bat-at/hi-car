@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
 import '../core/logger.dart';
 
@@ -240,6 +241,71 @@ class ServiceChannel {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Cầu nối log native → danh sách lỗi trên UI ("Báo cáo lỗi").
+  ///
+  /// Lỗi native xảy ra LÚC BOOT (BootReceiver/Service chạy khi app chưa mở) chỉ nằm trong file
+  /// diagnostic, KHÔNG tự tạo thẻ AppLogger → trước đây danh sách lỗi trống nên không bấm Gửi
+  /// được. Hàm này đọc các dòng E/W native và đẩy MỖI lỗi MỚI thành 1 thẻ AppLogger (đúng nút
+  /// cũ), kèm adb log đầy đủ khi gửi. Dedup theo nội dung từng dòng để mở lại không bị lặp.
+  static const String _kImportedDiagKeys = 'imported_native_diag_keys';
+
+  Future<void> importNativeDiagnostics() async {
+    try {
+      final raw = await getDiagnosticLogErrors();
+      if (raw.trim().isEmpty) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final importedList = prefs.getStringList(_kImportedDiagKeys) ?? <String>[];
+      final importedSet = importedList.toSet();
+
+      var added = 0;
+      for (final line in raw.split('\n')) {
+        final isError = line.contains(' E HiCar') || line.contains(' W HiCar');
+        if (!isError) continue;
+
+        final key = line.trim();
+        if (key.isEmpty || importedSet.contains(key)) continue;
+
+        importedSet.add(key);
+        importedList.add(key);
+        AppLogger.instance.log(
+          _readableNativeLine(line),
+          type: _mapNativeLineType(line),
+          details: {'source': 'native_diagnostic'},
+        );
+        added++;
+      }
+
+      if (added > 0) {
+        // Giới hạn key đã import (file native vốn bị cắt ~200 dòng) để prefs không phình.
+        final bounded = importedList.length > 200
+            ? importedList.sublist(importedList.length - 200)
+            : importedList;
+        await prefs.setStringList(_kImportedDiagKeys, bounded);
+        debugPrint('ServiceChannel: importNativeDiagnostics → +$added thẻ lỗi native');
+      }
+    } catch (e) {
+      debugPrint('ServiceChannel: importNativeDiagnostics error: $e');
+    }
+  }
+
+  /// Map dòng log native sang loại lỗi UI (đều nằm trong AppLogger.errorTypes để hiện thẻ).
+  String _mapNativeLineType(String line) {
+    if (line.contains('HiCarAudio')) return 'native_playback_error';
+    if (line.contains('HiCarSync')) return 'sync_error';
+    return 'native_error';
+  }
+
+  /// Rút gọn dòng adb thành thông điệp dễ đọc: "[Lỗi · HiCarBoot] nội dung".
+  String _readableNativeLine(String line) {
+    final tagMatch = RegExp(r'\b(HiCar\w*|OverlayBridge)\b').firstMatch(line);
+    final tag = tagMatch?.group(1) ?? 'Native';
+    final level = line.contains(' E HiCar') ? 'Lỗi' : 'Cảnh báo';
+    final colonIdx = line.indexOf('$tag: ');
+    final body = colonIdx >= 0 ? line.substring(colonIdx + tag.length + 2) : line;
+    return '[$level · $tag] ${body.trim()}';
   }
 
   Future<void> clearDiagnosticLog() async {

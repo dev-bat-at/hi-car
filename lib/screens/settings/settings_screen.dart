@@ -328,6 +328,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showBugReportDialog(BuildContext context) {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    // Kéo lỗi native mới nhất (kể cả lỗi lúc boot) vào danh sách trước khi mở. AppLogger
+    // notifyListeners → ListenableBuilder bên dưới tự refresh khi có thẻ mới được thêm.
+    ServiceChannel.instance.importNativeDiagnostics();
     showDialog(
       context: context,
       builder: (context) => ListenableBuilder(

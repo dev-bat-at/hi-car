@@ -37,15 +37,36 @@ class AudioProvider extends ChangeNotifier {
   //    resume có thể gọi gần như đồng thời). Tránh ngắt/phát lại từ đầu.
   bool _isStartingPlayback = false;
 
+  String? get _effectiveGoodbyeId =>
+      (_activeGoodbyeId == null || _activeGoodbyeId!.isEmpty)
+          ? AppConstants.defaultGoodbyeId
+          : _activeGoodbyeId;
+
+  AudioModel _buildDefaultGoodbyeAudio() {
+    return AudioModel(
+      id: AppConstants.defaultGoodbyeId,
+      title: 'Lời tạm biệt mặc định',
+      type: AudioType.goodbye,
+      remoteUrl: '',
+      assetPath: AppConstants.defaultGoodbyeAsset,
+      description: 'Nhạc có sẵn trong app',
+      isActiveGoodbye: _effectiveGoodbyeId == AppConstants.defaultGoodbyeId,
+    );
+  }
+
   List<AudioModel> get audioList {
-    final mappedList = _audioList.map((a) {
+    final mappedList = _audioList
+        .where((a) => a.id != AppConstants.defaultGoodbyeId)
+        .map((a) {
       return a.copyWith(
         isActiveGreeting: _activeGreetingId == a.id,
-        isActiveGoodbye: _activeGoodbyeId == a.id,
+        isActiveGoodbye: _effectiveGoodbyeId == a.id,
       );
     }).toList();
 
-    if (!_isBetaMode) return mappedList;
+    final defaultGoodbye = _buildDefaultGoodbyeAudio();
+
+    if (!_isBetaMode) return [defaultGoodbye, ...mappedList];
 
     final demoAudio = AudioModel(
       id: 'demo_default',
@@ -55,10 +76,10 @@ class AudioProvider extends ChangeNotifier {
       assetPath: AppConstants.defaultAudioAsset,
       description: 'Lấy từ bộ nhớ máy (Không cần mạng)',
       isActiveGreeting: _activeGreetingId == 'demo_default',
-      isActiveGoodbye: _activeGoodbyeId == 'demo_default',
+      isActiveGoodbye: false,
     );
 
-    return [demoAudio, ...mappedList];
+    return [demoAudio, defaultGoodbye, ...mappedList];
   }
 
   AudioModel? get currentlyPlaying => _currentlyPlaying;
@@ -74,8 +95,25 @@ class AudioProvider extends ChangeNotifier {
 
   AudioModel? get activeGreeting =>
       audioList.where((a) => a.isActiveGreeting).firstOrNull;
-  AudioModel? get activeGoodbye =>
-      audioList.where((a) => a.isActiveGoodbye).firstOrNull;
+  AudioModel get activeGoodbye {
+    if (_effectiveGoodbyeId == AppConstants.defaultGoodbyeId) {
+      return _buildDefaultGoodbyeAudio();
+    }
+    return audioList.firstWhere(
+      (a) => a.isActiveGoodbye,
+      orElse: () => _buildDefaultGoodbyeAudio(),
+    );
+  }
+
+  Future<void> _ensureDefaultGoodbye() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getString(AppConstants.keyGoodbyeAudioId);
+    if (current == null || current.isEmpty) {
+      _activeGoodbyeId = AppConstants.defaultGoodbyeId;
+      await prefs.setString(
+          AppConstants.keyGoodbyeAudioId, AppConstants.defaultGoodbyeId);
+    }
+  }
 
   // ===== Init =====
 
@@ -86,6 +124,7 @@ class AudioProvider extends ChangeNotifier {
     _isBetaMode = prefs.getBool('is_beta_mode') ?? false;
     _activeGreetingId = prefs.getString(AppConstants.keyGreetingAudioId);
     _activeGoodbyeId = prefs.getString(AppConstants.keyGoodbyeAudioId);
+    await _ensureDefaultGoodbye();
 
     notifyListeners();
 
@@ -96,7 +135,11 @@ class AudioProvider extends ChangeNotifier {
     // Dùng Future.delayed để tránh MissingPluginException do plugin chưa attach xong
     // khi initState() chạy (race condition trong release mode).
     Future.delayed(const Duration(milliseconds: 800), () {
+      _syncNativePaths().catchError((_) {});
       ServiceChannel.instance.syncPrefs().catchError((_) {});
+      // Kéo lỗi native lúc boot (BootReceiver/Service chạy khi app chưa mở) vào danh sách
+      // "Báo cáo lỗi" để hiện thẻ + gửi được bằng nút cũ, kể cả khi không có lỗi Flutter nào.
+      ServiceChannel.instance.importNativeDiagnostics().catchError((_) {});
     });
 
     ServiceChannel.instance.onPlaybackComplete = () {
@@ -137,9 +180,10 @@ class AudioProvider extends ChangeNotifier {
 
     if (!keepActiveSelection) {
       _activeGreetingId = null;
-      _activeGoodbyeId = null;
+      _activeGoodbyeId = AppConstants.defaultGoodbyeId;
       await prefs.remove(AppConstants.keyGreetingAudioId);
-      await prefs.remove(AppConstants.keyGoodbyeAudioId);
+      await prefs.setString(
+          AppConstants.keyGoodbyeAudioId, AppConstants.defaultGoodbyeId);
       await prefs.remove('greeting_audio_path');
       await prefs.remove('goodbye_audio_path');
     }
@@ -176,6 +220,7 @@ class AudioProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _activeGreetingId = prefs.getString(AppConstants.keyGreetingAudioId);
       _activeGoodbyeId = prefs.getString(AppConstants.keyGoodbyeAudioId);
+      await _ensureDefaultGoodbye();
 
       // Update native service
       await _syncNativePaths();
@@ -211,8 +256,16 @@ class AudioProvider extends ChangeNotifier {
 
   Future<void> setAsGoodbye(String audioId) async {
     _activeGoodbyeId = audioId;
-    _audioList =
-        await AudioRepository.instance.setGoodbyeAudio(audioId, _audioList);
+    if (audioId == AppConstants.defaultGoodbyeId) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConstants.keyGoodbyeAudioId, audioId);
+      _audioList =
+          _audioList.map((a) => a.copyWith(isActiveGoodbye: false)).toList();
+      await AudioRepository.instance.saveLocalList(_audioList);
+    } else {
+      _audioList =
+          await AudioRepository.instance.setGoodbyeAudio(audioId, _audioList);
+    }
     await _syncNativePaths();
     notifyListeners();
   }
@@ -227,14 +280,10 @@ class AudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Bỏ đặt làm lời tạm biệt (xoá khỏi cấu hình + vùng nhớ native + file boot).
+  /// Bỏ đặt làm lời tạm biệt → quay về bản mặc định có sẵn trong app.
   Future<void> unsetGoodbye() async {
-    _activeGoodbyeId = null;
-    _audioList = await AudioRepository.instance.clearGoodbyeAudio(_audioList);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('goodbye_audio_path');
-    await ServiceChannel.instance.clearGoodbyeConfig();
-    notifyListeners();
+    if (_effectiveGoodbyeId == AppConstants.defaultGoodbyeId) return;
+    await setAsGoodbye(AppConstants.defaultGoodbyeId);
   }
 
   // ===== Playback =====
@@ -349,16 +398,12 @@ class AudioProvider extends ChangeNotifier {
     }
 
     final audio = activeGoodbye;
-    String? path;
+    var path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
 
-    if (audio != null) {
-      path = await AudioRepository.instance.getGoodbyeAudioPath(audio);
-    } else {
-      // Fallback: audioList may not be loaded yet, read persisted path
+    if (path == null || path.isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       path = prefs.getString('goodbye_audio_path');
-      debugPrint(
-          'AudioProvider: No active goodbye in list, fallback path=$path');
+      debugPrint('AudioProvider: goodbye fallback path=$path');
     }
 
     if (path == null || path.isEmpty) {
@@ -380,7 +425,7 @@ class AudioProvider extends ChangeNotifier {
       }
 
       await ServiceChannel.instance.playGoodbye(audioPath: path);
-      _startWatchdog(audio?.durationSeconds ?? 15);
+      _startWatchdog(audio.durationSeconds > 0 ? audio.durationSeconds : 15);
       return true;
     } catch (e) {
       debugPrint('AudioProvider: playGoodbyeViaNative error: $e');
@@ -456,6 +501,7 @@ class AudioProvider extends ChangeNotifier {
   // ===== Action Methods =====
 
   Future<void> deleteAudio(String audioId) async {
+    if (audioId == AppConstants.defaultGoodbyeId) return;
     _audioList =
         await AudioRepository.instance.deleteAudio(audioId, _audioList);
     notifyListeners();

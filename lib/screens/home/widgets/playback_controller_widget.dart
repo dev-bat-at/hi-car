@@ -13,7 +13,6 @@ class PlaybackControllerWidget extends StatelessWidget {
     return Consumer<AudioProvider>(
       builder: (context, audioProvider, _) {
         final hasGreeting = audioProvider.activeGreeting != null;
-        final hasGoodbye = audioProvider.activeGoodbye != null;
 
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
@@ -44,12 +43,10 @@ class PlaybackControllerWidget extends StatelessWidget {
                   Expanded(
                     child: _ControllerButton(
                       label: 'Phát tạm biệt',
-                      subLabel: hasGoodbye
-                          ? audioProvider.activeGoodbye!.title
-                          : 'Chưa cài đặt',
+                      subLabel: audioProvider.activeGoodbye.title,
                       icon: Icons.directions_car_rounded,
                       color: AppColors.success,
-                      isEnabled: hasGoodbye,
+                      isEnabled: true,
                       isPlaying: audioProvider.isNativeGoodbyePlaying,
                       onTap: () => audioProvider.playGoodbyeViaNative(),
                     ),

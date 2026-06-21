@@ -99,10 +99,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return false;
       }
 
-      debugPrint('Main: Target Bluetooth connected, triggering greeting...');
-      final ok = await _audioProvider.playGreetingViaNative();
-      debugPrint('Main: playGreetingViaNative → ${ok ? "OK" : "FAILED"}');
-      return ok;
+      // 🟢 KHÔNG phát từ Flutter nữa cho phone_bluetooth.
+      // BluetoothReceiver (native) đã bật ACTION_BT_WATCH_A2DP: đợi route A2DP của màn hình
+      // xe sẵn sàng rồi mới phát. Nếu Flutter cũng gọi playGreetingViaNative ở đây thì phát
+      // NGAY khi ACL connect (chưa có A2DP) → tiếng ra loa điện thoại + phát chồng. Để native
+      // làm chủ toàn bộ giúp tiếng luôn ra loa xe và chỉ phát một lần.
+      debugPrint(
+          'Main: BT connected → native A2DP watch sở hữu playback, Flutter bỏ qua');
+      return false;
     };
 
     _bluetoothProvider.init();

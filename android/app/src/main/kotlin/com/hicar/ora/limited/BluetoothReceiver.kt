@@ -57,6 +57,42 @@ class BluetoothReceiver : BroadcastReceiver() {
             }
         }
 
+        /**
+         * Kiểm tra profile A2DP (audio media) đã CONNECTED chưa.
+         *
+         * ⚠️ ACL_CONNECTED (lớp vật lý Bluetooth) xảy ra TRƯỚC khi màn hình xe khởi tạo xong
+         *    sink A2DP. Phát ngay lúc ACL → âm thanh ra LOA ĐIỆN THOẠI vì route A2DP chưa sẵn
+         *    sàng. Phải đợi tới khi A2DP = STATE_CONNECTED thì audio mới đi qua loa xe.
+         *
+         * Dùng adapter.getProfileConnectionState (đồng bộ) thay vì getProfileProxy (bất đồng bộ)
+         * để poll được trong vòng lặp watch. Trên xe thường chỉ có 1 sink A2DP nên trạng thái
+         * tổng hợp này đủ tin cậy; đã gate theo đúng địa chỉ xe mục tiêu ở bước ACL.
+         */
+        fun isA2dpConnected(context: Context, address: String): Boolean {
+            return try {
+                val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                val adapter = bluetoothManager?.adapter ?: return false
+
+                // Ưu tiên kiểm tra đúng thiết bị mục tiêu nếu lấy được proxy/đối tượng device.
+                if (address.isNotEmpty()) {
+                    try {
+                        val device = adapter.getRemoteDevice(address)
+                        val state = adapter.getProfileConnectionState(BluetoothProfile.A2DP)
+                        // getProfileConnectionState là trạng thái tổng hợp của profile; kết hợp với
+                        // isConnected của đúng device để chắc chắn đúng xe đã nối.
+                        if (state == BluetoothProfile.STATE_CONNECTED && isDeviceConnected(device)) {
+                            return true
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+
+                adapter.getProfileConnectionState(BluetoothProfile.A2DP) == BluetoothProfile.STATE_CONNECTED
+            } catch (e: Exception) {
+                false
+            }
+        }
+
         fun startDiscovery(context: Context): Boolean {
             val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             val adapter = bluetoothManager?.adapter ?: return false
@@ -275,10 +311,13 @@ class BluetoothReceiver : BroadcastReceiver() {
                             context.startService(serviceIntent)
                         }
                     } else if (connectionMode == "phone_bluetooth" && targetAddress.isNotEmpty() && deviceAddress.equals(targetAddress, ignoreCase = true)) {
-                        // 🟢 AUTO-PLAY (Bluetooth): Chỉ phát nếu đúng xe mục tiêu
-                        Log.d("HiCar", "Bluetooth Mode: Target Match! Playing audio...")
+                        // 🟢 AUTO-PLAY (Bluetooth): đúng xe mục tiêu → KHÔNG phát ngay.
+                        // ACL connect xảy ra trước khi sink A2DP của màn hình xe sẵn sàng; nếu phát
+                        // ngay, âm thanh ra loa điện thoại. Bật watch A2DP: service sẽ đợi tới khi
+                        // route A2DP = CONNECTED rồi mới phát → tiếng luôn ra loa xe.
+                        Log.d("HiCar", "Bluetooth Mode: Target Match! → watch A2DP trước khi phát")
                         val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
-                            action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
+                            action = AudioForegroundService.ACTION_BT_WATCH_A2DP
                             putExtra("deviceAddress", deviceAddress)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

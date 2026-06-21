@@ -18,8 +18,9 @@ import java.io.File
 class BootReceiver : BroadcastReceiver() {
 
     companion object {
-        /** Retry boot greeting sau 45s / 120s / 300s nếu box khởi động chậm hoặc audio subsystem chưa sẵn sàng. */
-        private val BOOT_ALARM_DELAYS_MS = longArrayOf(45_000L, 120_000L, 300_000L)
+        /** Retry boot greeting sau 15s / 40s / 90s nếu box khởi động chậm hoặc audio subsystem chưa sẵn sàng.
+         *  (Rút ngắn so với 45/120/300 trước đây để phục hồi nhanh hơn, hợp với poll readiness.) */
+        private val BOOT_ALARM_DELAYS_MS = longArrayOf(15_000L, 40_000L, 90_000L)
 
         fun scheduleBootRetryAlarms(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return

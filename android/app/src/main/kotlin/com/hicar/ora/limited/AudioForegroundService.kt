@@ -71,10 +71,19 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         private const val BT_MIN_DELAY_SEC = 3
         private const val BT_A2DP_POLL_MS = 500L
         private const val BT_A2DP_WATCH_TIMEOUT_MS = 90_000L
-        // Box cold boot: tối thiểu 8s để audio subsystem trên box xe kịp khởi tạo.
-        private const val BOOT_MIN_DELAY_SEC = 8
         private const val BOOT_MAX_RETRIES = 3
-        private val BOOT_RETRY_DELAYS_MS = longArrayOf(45_000L, 120_000L, 300_000L)
+        // 🟢 Retry rút ngắn: phục hồi nhanh hơn khi lần đầu thất bại mà vẫn dự phòng box boot rất chậm.
+        private val BOOT_RETRY_DELAYS_MS = longArrayOf(15_000L, 40_000L, 90_000L)
+
+        // 🟢 BOOT READINESS POLL (Box): thay vì CHỜ CỨNG 8s rồi mới phát, ta thăm dò audio
+        //    subsystem sớm và PHÁT NGAY khi sẵn sàng → box warm-restart phát sau ~2s thay vì 8s.
+        //    - Bắt đầu thăm dò sau BOOT_POLL_START_MS (cho service + audio init kịp tối thiểu).
+        //    - Mỗi BOOT_POLL_INTERVAL_MS thử xin audio focus: được = loa đã sẵn sàng → phát ngay.
+        //    - Quá BOOT_READY_TIMEOUT_MS vẫn chưa được → phát best-effort + để retry alarm lo tiếp
+        //      (cold boot qua đêm: subsystem chưa sẵn sàng thì KHÔNG chốt, tránh phát "ảo").
+        private const val BOOT_POLL_START_MS = 2_000L
+        private const val BOOT_POLL_INTERVAL_MS = 700L
+        private const val BOOT_READY_TIMEOUT_MS = 12_000L
         @Volatile var lastGreetingTriggerAtMs: Long = 0L
 
         // 🟢 ANDROID AUTO: chỉ tự phát đúng MỘT lần mỗi phiên kết nối (có dây/không dây).
@@ -116,6 +125,8 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     private var btA2dpWatchStartedAtMs: Long = 0L
     private var btA2dpWatchAddress: String = ""
     private var bootRetryCount: Int = 0
+    private var bootGreetingWatchRunnable: Runnable? = null
+    private var bootGreetingWatchStartedAtMs: Long = 0L
 
     // ==============================
     // Lifecycle
@@ -223,7 +234,11 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         //      BootReceiver gửi), ta lên foreground bằng type specialUse (được phép từ boot).
         //    → Mọi luồng còn lại (app mở, Android Auto, Bluetooth...) vẫn dùng mediaPlayback
         //      như cũ để KHÔNG ảnh hưởng tới Android Auto đang hoạt động tốt.
-        val fromBoot = action == ACTION_PLAY_GREETING_DELAYED
+        // Luồng boot (Box): cả lần phát đầu (PLAY_GREETING_DELAYED) lẫn các lần retry
+        // (BOOT_RETRY_GREETING do AlarmManager bắn khi process có thể đã bị kill) đều cần
+        // start FGS bằng type specialUse — mediaPlayback bị CẤM start từ nền/boot trên API 35.
+        val fromBoot = action == ACTION_PLAY_GREETING_DELAYED ||
+            action == ACTION_BOOT_RETRY_GREETING
 
         try {
             loadPrefs()
@@ -285,8 +300,11 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 val address = intent.getStringExtra("deviceAddress") ?: targetDeviceAddress
                 if (connectionMode == "phone_bluetooth" && autoPlayEnabled && address.isNotEmpty()) {
                     lastGreetingTriggerAtMs = 0L
-                    HiCarDiagnosticLog.d("HiCarService", "BT ACL → watch A2DP for $address")
+                    val alreadyReady = BluetoothReceiver.isA2dpConnected(this, address)
+                    HiCarDiagnosticLog.d("HiCarBT", "BT ACL → watch A2DP for $address (a2dpReady=$alreadyReady)")
                     startBtA2dpWatch(address)
+                } else {
+                    HiCarDiagnosticLog.w("HiCarBT", "BT watch bỏ qua: mode=$connectionMode, autoPlay=$autoPlayEnabled, addr='$address'")
                 }
             }
             ACTION_BOOT_RETRY_GREETING -> {
@@ -439,13 +457,13 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 }
                 val elapsed = SystemClock.elapsedRealtime() - btA2dpWatchStartedAtMs
                 if (BluetoothReceiver.isA2dpConnected(this@AudioForegroundService, address)) {
-                    HiCarDiagnosticLog.d("HiCarService", "A2DP ready after ${elapsed}ms → trigger greeting")
+                    HiCarDiagnosticLog.d("HiCarBT", "A2DP ready after ${elapsed}ms → trigger greeting (loa xe đã sẵn sàng)")
                     cancelBtA2dpWatch()
                     triggerGreetingDebounced(useBootAudio = false, source = "a2dp_ready")
                     return
                 }
                 if (elapsed > BT_A2DP_WATCH_TIMEOUT_MS) {
-                    HiCarDiagnosticLog.w("HiCarService", "A2DP watch timeout (${BT_A2DP_WATCH_TIMEOUT_MS}ms) → skip")
+                    HiCarDiagnosticLog.w("HiCarBT", "A2DP watch timeout (${BT_A2DP_WATCH_TIMEOUT_MS}ms) → skip (màn xe không sẵn sàng?)")
                     cancelBtA2dpWatch()
                     return
                 }
@@ -601,6 +619,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         carConnectionObserver = null
         cancelAaProjectionWatch()
         cancelBtA2dpWatch()
+        cancelBootGreetingWatch()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -665,29 +684,28 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     private fun scheduleDelayedGreeting(useBootAudio: Boolean = false) {
         cancelDelayedPlay()
         loadPrefs()
+
+        // 🟢 BOOT (Box): KHÔNG chờ cứng 8s nữa — dùng poll readiness để phát NGAY khi audio sẵn
+        //    sàng (warm restart phát sau ~2s). Cold boot vẫn đợi đến khi sẵn sàng / timeout.
+        if (useBootAudio) {
+            startBootGreetingWatch()
+            return
+        }
+
         delayedRunnable = Runnable {
             if (mediaPlayer?.isPlaying == true) {
                 Log.d("HiCarService", "scheduleDelayedGreeting: đang phát → bỏ qua")
                 return@Runnable
             }
-            val path = if (useBootAudio) {
-                // Ưu tiên file đã copy vào vùng boot-safe; fallback sang prefs path nếu cần
-                val bootPath = getBootAudioPath("boot_greeting.mp3")
-                Log.d("HiCarService", "Boot greeting: bootPath=$bootPath, prefPath=$greetingAudioPath")
-                bootPath ?: greetingAudioPath
-            } else {
-                greetingAudioPath
-            }
+            val path = greetingAudioPath
             if (path.isNotEmpty()) {
-                playAudio(path, "greeting", isBootAutoPlay = useBootAudio)
+                playAudio(path, "greeting", isBootAutoPlay = false)
             } else {
                 HiCarDiagnosticLog.e("HiCarService", "scheduleDelayedGreeting: no valid audio path found")
-                if (useBootAudio) scheduleBootRetryIfNeeded()
             }
         }
-        // Boot (Box): tối thiểu 8s. BT: dùng delay_seconds (tối thiểu 3s). AA: 1.5s.
+        // BT: dùng delay_seconds (tối thiểu 3s). AA: 1.5s.
         val effectiveDelay = when {
-            useBootAudio -> maxOf(delaySeconds.toLong(), BOOT_MIN_DELAY_SEC.toLong()) * 1000L
             connectionMode == "phone_bluetooth" -> maxOf(delaySeconds.toLong(), BT_MIN_DELAY_SEC.toLong()) * 1000L
             else -> 1500L
         }
@@ -695,7 +713,77 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         handler.postDelayed(delayedRunnable!!, effectiveDelay)
     }
 
+    /**
+     * Poll audio readiness cho luồng boot Box và phát ngay khi sẵn sàng.
+     *
+     * Tín hiệu "sẵn sàng" = xin được AudioFocus (loa/route đã hoạt động). Khi được, ta GIỮ focus
+     * và phát luôn qua doPlayAudio(hadFocus=true) → không xin lại, không nhả phí.
+     *
+     * - Box warm restart: focus thường được cấp ngay vòng đầu (~2s) → phát nhanh.
+     * - Box cold boot qua đêm: poll tới khi sẵn sàng; quá BOOT_READY_TIMEOUT_MS thì phát best-effort
+     *   (KHÔNG chốt bootGreetingHandled) và để retry alarm lo tiếp → ổn định, tránh phát "ảo".
+     */
+    private fun startBootGreetingWatch() {
+        cancelBootGreetingWatch()
+        bootGreetingWatchStartedAtMs = SystemClock.elapsedRealtime()
+
+        fun resolveBootPath(): String {
+            val bootPath = getBootAudioPath("boot_greeting.mp3")
+            return if (!bootPath.isNullOrEmpty()) bootPath else greetingAudioPath
+        }
+
+        bootGreetingWatchRunnable = object : Runnable {
+            override fun run() {
+                if (bootGreetingHandled) {
+                    cancelBootGreetingWatch()
+                    return
+                }
+                if (mediaPlayer?.isPlaying == true) {
+                    cancelBootGreetingWatch()
+                    return
+                }
+
+                val path = resolveBootPath()
+                if (path.isEmpty()) {
+                    HiCarDiagnosticLog.e("HiCarService", "Boot watch: no valid audio path found")
+                    cancelBootGreetingWatch()
+                    scheduleBootRetryIfNeeded()
+                    return
+                }
+
+                val elapsed = SystemClock.elapsedRealtime() - bootGreetingWatchStartedAtMs
+
+                // Thăm dò readiness bằng audio focus. Được = sẵn sàng → phát ngay (giữ focus).
+                if (requestAudioFocus()) {
+                    HiCarDiagnosticLog.d("HiCarService", "Boot watch: audio ready sau ${elapsed}ms → phát ngay")
+                    cancelBootGreetingWatch()
+                    doPlayAudio(path, "greeting", isBootAutoPlay = true, hadFocus = true)
+                    return
+                }
+
+                if (elapsed >= BOOT_READY_TIMEOUT_MS) {
+                    HiCarDiagnosticLog.w("HiCarService", "Boot watch: timeout ${BOOT_READY_TIMEOUT_MS}ms chưa có focus → phát best-effort + retry")
+                    cancelBootGreetingWatch()
+                    // hadFocus=false → KHÔNG chốt bootGreetingHandled; doPlayAudio tự lên lịch retry.
+                    doPlayAudio(path, "greeting", isBootAutoPlay = true, hadFocus = false)
+                    return
+                }
+
+                handler.postDelayed(this, BOOT_POLL_INTERVAL_MS)
+            }
+        }
+        HiCarDiagnosticLog.d("HiCarService", "Boot watch: bắt đầu poll readiness (start=${BOOT_POLL_START_MS}ms, interval=${BOOT_POLL_INTERVAL_MS}ms, timeout=${BOOT_READY_TIMEOUT_MS}ms)")
+        handler.postDelayed(bootGreetingWatchRunnable!!, BOOT_POLL_START_MS)
+    }
+
+    private fun cancelBootGreetingWatch() {
+        bootGreetingWatchRunnable?.let { handler.removeCallbacks(it) }
+        bootGreetingWatchRunnable = null
+        bootGreetingWatchStartedAtMs = 0L
+    }
+
     private fun cancelDelayedPlay() {
+        cancelBootGreetingWatch()
         delayedRunnable?.let { handler.removeCallbacks(it) }
         delayedRunnable = null
     }
@@ -719,7 +807,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         val granted = requestAudioFocus()
         HiCarDiagnosticLog.d("HiCarAudio", "playAudio: audioFocus granted=$granted (attempt=$focusAttempt)")
         if (granted) {
-            doPlayAudio(path, type, isBootAutoPlay)
+            doPlayAudio(path, type, isBootAutoPlay, hadFocus = true)
             return
         }
 
@@ -728,11 +816,11 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
             handler.postDelayed({ playAudio(path, type, focusAttempt + 1, isBootAutoPlay) }, FOCUS_RETRY_MS)
         } else {
             HiCarDiagnosticLog.w("HiCarAudio", "playAudio: focus vẫn bị từ chối sau $MAX_FOCUS_ATTEMPTS lần → phát best-effort (không focus)")
-            doPlayAudio(path, type, isBootAutoPlay)
+            doPlayAudio(path, type, isBootAutoPlay, hadFocus = false)
         }
     }
 
-    private fun doPlayAudio(path: String, type: String, isBootAutoPlay: Boolean = false) {
+    private fun doPlayAudio(path: String, type: String, isBootAutoPlay: Boolean = false, hadFocus: Boolean = true) {
 
         try {
             if (mediaPlayer == null) {
@@ -756,8 +844,20 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 if (type == "greeting") {
                     loadPrefs()
                     if (connectionMode == "android_box_mode" && isBootAutoPlay) {
-                        bootGreetingHandled = true
-                        HiCarDiagnosticLog.d("HiCarService", "Box boot greeting started → bootGreetingHandled set")
+                        // ⚠️ Box tắt xe qua đêm = cold boot: audio subsystem có thể CHƯA sẵn sàng
+                        //    khi boot. start() vẫn "thành công" nhưng nếu KHÔNG có audio focus thì
+                        //    tiếng có thể không ra loa xe. Trước đây cờ bị set ngay → mọi retry bị
+                        //    chặn → sáng hôm sau im lặng.
+                        //    → CHỈ chốt thành công khi có focus (tiếng thật ra loa). Nếu phát
+                        //      best-effort (không focus) thì GIỮ retry để lần sau (subsystem đã sẵn
+                        //      sàng) phát lại đúng.
+                        if (hadFocus) {
+                            bootGreetingHandled = true
+                            HiCarDiagnosticLog.d("HiCarService", "Box boot greeting started (focus granted) → bootGreetingHandled set")
+                        } else {
+                            HiCarDiagnosticLog.w("HiCarService", "Box boot greeting phát best-effort (KHÔNG focus) → KHÔNG chốt, giữ retry")
+                            scheduleBootRetryIfNeeded()
+                        }
                     }
                     if (connectionMode == "phone_android_auto" && pendingAaAutoGreeting) {
                         aaGreetingPlayedThisConnection = true

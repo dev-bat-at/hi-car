@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import '../../../core/app_colors.dart';
+import '../../../core/constants.dart';
 import '../../../data/models/audio_model.dart';
 import '../../../providers/audio_provider.dart';
 
@@ -266,6 +267,7 @@ class _AudioActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.read<AudioProvider>();
+    final isBuiltInGoodbye = audio.id == AppConstants.defaultGoodbyeId;
 
     return PopupMenuButton<String>(
       padding: EdgeInsets.zero,
@@ -319,21 +321,24 @@ class _AudioActions extends StatelessWidget {
           label: audio.isActiveGreeting ? 'Bỏ làm lời chào' : 'Đặt làm lời chào',
           color: AppColors.primary,
         ),
-        _popupItem(
-          value: audio.isActiveGoodbye ? 'unset_goodbye' : 'set_goodbye',
-          icon: audio.isActiveGoodbye
-              ? Icons.do_not_disturb_on_outlined
-              : Icons.directions_car_rounded,
-          label:
-              audio.isActiveGoodbye ? 'Bỏ làm tạm biệt' : 'Đặt làm tạm biệt',
-          color: AppColors.success,
-        ),
-        _popupItem(
-          value: 'delete',
-          icon: Icons.delete_outline_rounded,
-          label: 'Xoá',
-          color: const Color(0xFFFF5252),
-        ),
+        if (!isBuiltInGoodbye || !audio.isActiveGoodbye)
+          _popupItem(
+            value: audio.isActiveGoodbye ? 'unset_goodbye' : 'set_goodbye',
+            icon: audio.isActiveGoodbye
+                ? Icons.do_not_disturb_on_outlined
+                : Icons.directions_car_rounded,
+            label: audio.isActiveGoodbye
+                ? 'Bỏ làm tạm biệt'
+                : 'Đặt làm tạm biệt',
+            color: AppColors.success,
+          ),
+        if (!isBuiltInGoodbye)
+          _popupItem(
+            value: 'delete',
+            icon: Icons.delete_outline_rounded,
+            label: 'Xoá',
+            color: const Color(0xFFFF5252),
+          ),
       ],
     );
   }
