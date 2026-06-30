@@ -84,8 +84,11 @@ class PermissionProvider extends ChangeNotifier {
       final btConnectStatus = await Permission.bluetoothConnect.status;
       final notifStatus = await Permission.notification.status;
       final overlayGranted = await FlutterOverlayWindow.isPermissionGranted();
-      final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
-      final batteryGranted = batteryStatus.isGranted;
+      var batteryGranted = false;
+      if (Platform.isAndroid) {
+        batteryGranted =
+            await ServiceChannel.instance.isIgnoringBatteryOptimizations();
+      }
 
       _status = PermissionStatus(
         bluetooth: btStatus.isGranted,

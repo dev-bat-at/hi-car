@@ -47,6 +47,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         /** Box: retry phát nhạc boot nếu lần đầu thất bại hoặc box khởi động chậm. */
         const val ACTION_BOOT_RETRY_GREETING = "ACTION_BOOT_RETRY_GREETING"
         const val EXTRA_PREFER_BOOT_AUDIO = "EXTRA_PREFER_BOOT_AUDIO"
+        const val EXTRA_BOOT_SESSION_ID = "EXTRA_BOOT_SESSION_ID"
 
         const val NOTIFICATION_CHANNEL_ID = "hicar_service_channel"
         const val NOTIFICATION_ID = 1001
@@ -84,6 +85,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         private const val BOOT_POLL_START_MS = 2_000L
         private const val BOOT_POLL_INTERVAL_MS = 700L
         private const val BOOT_READY_TIMEOUT_MS = 12_000L
+        private const val BOOT_MISS_WATCHDOG_MS = 120_000L
         @Volatile var lastGreetingTriggerAtMs: Long = 0L
 
         // 🟢 ANDROID AUTO: chỉ tự phát đúng MỘT lần mỗi phiên kết nối (có dây/không dây).
@@ -127,6 +129,10 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     private var bootRetryCount: Int = 0
     private var bootGreetingWatchRunnable: Runnable? = null
     private var bootGreetingWatchStartedAtMs: Long = 0L
+    private var activeBootSessionId: Long = -1L
+    private var bootMissWatchdogRunnable: Runnable? = null
+    private var bootMissWatchdogScheduledForSession: Long = -1L
+    private var completingBootSessionId: Long = -1L
 
     // ==============================
     // Lifecycle
@@ -242,6 +248,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         try {
             loadPrefs()
+            applyBootSessionFromIntent(intent)
             startForegroundCompat(fromBoot)
         } catch (e: Exception) {
             Log.e("HiCarService", "Error in onStartCommand: ${e.message}")
@@ -480,13 +487,63 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         btA2dpWatchAddress = ""
     }
 
+    private fun applyBootSessionFromIntent(intent: Intent?) {
+        val sessionFromIntent = intent?.getLongExtra(EXTRA_BOOT_SESSION_ID, -1L) ?: -1L
+        if (sessionFromIntent <= 0L) return
+        if (sessionFromIntent != activeBootSessionId) {
+            activeBootSessionId = sessionFromIntent
+            bootRetryCount = 0
+            bootGreetingHandled = false
+            cancelBootMissWatchdog()
+            bootMissWatchdogScheduledForSession = -1L
+            HiCarDiagnosticLog.d("HiCarService", "Active boot session → $activeBootSessionId")
+        }
+    }
+
+    private fun resolveBootSessionId(): Long {
+        if (activeBootSessionId > 0L) return activeBootSessionId
+        return BootSessionManager.getCurrentSession(this)
+    }
+
+    private fun isActiveBootSessionComplete(): Boolean {
+        return BootSessionManager.isSessionCompleted(this, resolveBootSessionId())
+    }
+
+    private fun scheduleBootMissWatchdogIfNeeded() {
+        val sessionId = resolveBootSessionId()
+        if (sessionId <= 0L) return
+        if (bootMissWatchdogScheduledForSession == sessionId) return
+        bootMissWatchdogScheduledForSession = sessionId
+        cancelBootMissWatchdog()
+        bootMissWatchdogRunnable = Runnable {
+            if (!BootSessionManager.isSessionCompleted(this, sessionId)) {
+                BootSessionManager.reportMissIfNeeded(this, sessionId, "timeout_no_playback")
+            }
+        }
+        handler.postDelayed(bootMissWatchdogRunnable!!, BOOT_MISS_WATCHDOG_MS)
+        HiCarDiagnosticLog.d("HiCarService", "Boot miss watchdog scheduled ${BOOT_MISS_WATCHDOG_MS}ms for session=$sessionId")
+    }
+
+    private fun cancelBootMissWatchdog() {
+        bootMissWatchdogRunnable?.let { handler.removeCallbacks(it) }
+        bootMissWatchdogRunnable = null
+    }
+
     private fun scheduleBootRetryIfNeeded() {
-        if (bootGreetingHandled || bootRetryCount >= BOOT_MAX_RETRIES) return
+        if (isActiveBootSessionComplete()) return
+        if (bootRetryCount >= BOOT_MAX_RETRIES) {
+            BootSessionManager.reportMissIfNeeded(
+                this,
+                resolveBootSessionId(),
+                "internal_retry_exhausted"
+            )
+            return
+        }
         val delay = BOOT_RETRY_DELAYS_MS.getOrElse(bootRetryCount) { BOOT_RETRY_DELAYS_MS.last() }
         bootRetryCount++
         HiCarDiagnosticLog.w("HiCarService", "Boot greeting failed → retry #$bootRetryCount in ${delay}ms")
         handler.postDelayed({
-            if (!bootGreetingHandled) {
+            if (!isActiveBootSessionComplete()) {
                 triggerGreetingDebounced(useBootAudio = true, source = "boot_retry_scheduled")
             }
         }, delay)
@@ -541,10 +598,19 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
      */
     private fun triggerGreetingDebounced(useBootAudio: Boolean, source: String) {
         if (useBootAudio) {
-            if (bootGreetingHandled) {
-                HiCarDiagnosticLog.d("HiCarService", "Boot greeting ($source) bỏ qua – đã phát thành công trong tiến trình này")
+            val sessionId = resolveBootSessionId()
+            if (BootSessionManager.isSessionCompleted(this, sessionId)) {
+                HiCarDiagnosticLog.d(
+                    "HiCarService",
+                    "Boot greeting ($source) bỏ qua – session $sessionId đã hoàn tất"
+                )
                 return
             }
+            if (mediaPlayer?.isPlaying == true) {
+                HiCarDiagnosticLog.d("HiCarService", "Boot greeting ($source) bỏ qua – đang phát")
+                return
+            }
+            scheduleBootMissWatchdogIfNeeded()
             HiCarDiagnosticLog.d("HiCarService", "Boot greeting ($source) → scheduleDelayedGreeting")
             scheduleDelayedGreeting(useBootAudio = true)
             return
@@ -620,6 +686,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
         cancelAaProjectionWatch()
         cancelBtA2dpWatch()
         cancelBootGreetingWatch()
+        cancelBootMissWatchdog()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -734,7 +801,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
 
         bootGreetingWatchRunnable = object : Runnable {
             override fun run() {
-                if (bootGreetingHandled) {
+                if (isActiveBootSessionComplete()) {
                     cancelBootGreetingWatch()
                     return
                 }
@@ -821,6 +888,7 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
     }
 
     private fun doPlayAudio(path: String, type: String, isBootAutoPlay: Boolean = false, hadFocus: Boolean = true) {
+        completingBootSessionId = -1L
 
         try {
             if (mediaPlayer == null) {
@@ -844,19 +912,18 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 if (type == "greeting") {
                     loadPrefs()
                     if (connectionMode == "android_box_mode" && isBootAutoPlay) {
-                        // ⚠️ Box tắt xe qua đêm = cold boot: audio subsystem có thể CHƯA sẵn sàng
-                        //    khi boot. start() vẫn "thành công" nhưng nếu KHÔNG có audio focus thì
-                        //    tiếng có thể không ra loa xe. Trước đây cờ bị set ngay → mọi retry bị
-                        //    chặn → sáng hôm sau im lặng.
-                        //    → CHỈ chốt thành công khi có focus (tiếng thật ra loa). Nếu phát
-                        //      best-effort (không focus) thì GIỮ retry để lần sau (subsystem đã sẵn
-                        //      sàng) phát lại đúng.
-                        if (hadFocus) {
-                            bootGreetingHandled = true
-                            HiCarDiagnosticLog.d("HiCarService", "Box boot greeting started (focus granted) → bootGreetingHandled set")
-                        } else {
-                            HiCarDiagnosticLog.w("HiCarService", "Box boot greeting phát best-effort (KHÔNG focus) → KHÔNG chốt, giữ retry")
+                        completingBootSessionId = resolveBootSessionId()
+                        if (!hadFocus) {
+                            HiCarDiagnosticLog.w(
+                                "HiCarService",
+                                "Box boot greeting phát best-effort (KHÔNG focus) → giữ retry, chờ onCompletion"
+                            )
                             scheduleBootRetryIfNeeded()
+                        } else {
+                            HiCarDiagnosticLog.d(
+                                "HiCarService",
+                                "Box boot greeting started (focus granted) → chờ onCompletion để chốt session"
+                            )
                         }
                     }
                     if (connectionMode == "phone_android_auto" && pendingAaAutoGreeting) {
@@ -878,6 +945,11 @@ class AudioForegroundService : MediaBrowserServiceCompat() {
                 OverlayBridge.notifyPlaybackStarted(type)
 
                 setOnCompletionListener {
+                    if (connectionMode == "android_box_mode" && completingBootSessionId > 0L) {
+                        BootSessionManager.markSessionCompleted(this@AudioForegroundService, completingBootSessionId)
+                        bootGreetingHandled = true
+                        completingBootSessionId = -1L
+                    }
                     updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
                     releaseAudioFocus()
                     mediaPlayer?.release()

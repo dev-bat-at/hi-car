@@ -228,6 +228,9 @@ class AudioProvider extends ChangeNotifier {
       _syncStatus = SyncStatus.error;
       _syncError = ApiClient.formatError(e);
       _syncMessage = _syncError!;
+      if (_audioList.isEmpty) {
+        _audioList = await AudioRepository.instance.loadLocalAudioList();
+      }
       AppLogger.instance.log(
         'Lỗi đồng bộ server: $e',
         type: 'sync_error',
@@ -333,7 +336,7 @@ class AudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> playGreetingViaNative() async {
+  Future<bool> playGreetingViaNative({bool allowAutostartRetry = false}) async {
     // 🟢 Đang trong quá trình khởi động phát khác → bỏ qua để tránh phát chồng/ngắt.
     if (_isStartingPlayback) {
       debugPrint('AudioProvider: playGreeting bỏ qua (đang khởi động phát)');
@@ -362,9 +365,8 @@ class AudioProvider extends ChangeNotifier {
 
     _isStartingPlayback = true;
     try {
-      _isNativeGreetingPlaying = true;
+      // Trạng thái "đang phát" chỉ bật khi native gọi onPlaybackStarted — tránh UI ảo.
       _isNativeGoodbyePlaying = false;
-      notifyListeners();
 
       // Delay ngắn (~1.5s) cho BT/AA/Màn Độ để audio focus ổn định. Box boot do native xử lý riêng.
       final prefs = await SharedPreferences.getInstance();
@@ -384,6 +386,11 @@ class AudioProvider extends ChangeNotifier {
         details: {'path': path, 'error': e.toString()},
       );
       _stopNativePlaybackState();
+      if (allowAutostartRetry) {
+        debugPrint('AudioProvider: autostart retry sau 15s...');
+        await Future.delayed(const Duration(seconds: 15));
+        return playGreetingViaNative(allowAutostartRetry: false);
+      }
       return false;
     } finally {
       _isStartingPlayback = false;
@@ -413,9 +420,8 @@ class AudioProvider extends ChangeNotifier {
 
     _isStartingPlayback = true;
     try {
-      _isNativeGoodbyePlaying = true;
+      // Trạng thái "đang phát" chỉ bật khi native gọi onPlaybackStarted.
       _isNativeGreetingPlaying = false;
-      notifyListeners();
 
       // Add a small delay for non-box modes to ensure connection is stable and audio focus is granted
       final prefs = await SharedPreferences.getInstance();

@@ -1,11 +1,8 @@
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../core/constants.dart';
 import '../data/models/user_model.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/services/api_client.dart';
 import '../data/services/api_service.dart';
-import '../native/service_channel.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
@@ -19,20 +16,39 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isLoggedIn => _status == AuthStatus.authenticated && _user != null;
   bool get isLoading => _status == AuthStatus.loading;
+  bool get sessionExpired => _sessionExpired;
+
+  bool _sessionExpired = false;
 
   // ===== Init =====
 
   Future<void> checkAuth() async {
     _setStatus(AuthStatus.loading);
+    _sessionExpired = false;
     try {
-      final loggedIn = await AuthRepository.instance.isLoggedIn();
-      if (loggedIn) {
-        _user = await AuthRepository.instance.getStoredUser();
-        _setStatus(AuthStatus.authenticated);
-      } else {
+      if (!await AuthRepository.instance.isLoggedIn()) {
+        _user = null;
         _setStatus(AuthStatus.unauthenticated);
+        return;
+      }
+
+      final validation = await AuthRepository.instance.validateSession();
+      switch (validation) {
+        case SessionValidation.valid:
+        case SessionValidation.offline:
+          _user = await AuthRepository.instance.getStoredUser();
+          _setStatus(AuthStatus.authenticated);
+        case SessionValidation.invalid:
+          await AuthRepository.instance.expireSession();
+          _user = null;
+          _sessionExpired = true;
+          _setStatus(AuthStatus.unauthenticated);
+        case SessionValidation.noToken:
+          _user = null;
+          _setStatus(AuthStatus.unauthenticated);
       }
     } catch (_) {
+      _user = null;
       _setStatus(AuthStatus.unauthenticated);
     }
   }
@@ -72,21 +88,10 @@ class AuthProvider extends ChangeNotifier {
       // Mạng lỗi / quá hạn → vẫn tiếp tục đăng xuất cục bộ.
     }
 
-    // 🟢 Xoá trạng thái đăng nhập cục bộ NHƯNG GIỮ LẠI nhạc chào/tạm biệt đã setup.
-    //    (Không gọi AuthRepository.logout() vì nó xoá cả greeting/goodbye config.)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(AppConstants.keyAuthToken);
-    await prefs.remove(AppConstants.keyUserData);
-
-    // 🟢 Xoá token ở cả vùng device-protected để sau khi REBOOT, BootReceiver không
-    //    còn coi là đã đăng nhập → không tự phát nhạc khi đã đăng xuất.
-    try {
-      await ServiceChannel.instance
-          .clearAuthState()
-          .timeout(const Duration(seconds: 2));
-    } catch (_) {}
+    await AuthRepository.instance.expireSession();
 
     _user = null;
+    _sessionExpired = false;
     _setStatus(AuthStatus.unauthenticated);
   }
 

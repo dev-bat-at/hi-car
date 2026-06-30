@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -149,6 +150,9 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             "showBatteryOptimizationSettings" -> {
                 showBatteryOptimizationSettings()
                 result.success(true)
+            }
+            "isIgnoringBatteryOptimizations" -> {
+                result.success(isIgnoringBatteryOptimizations())
             }
             "syncPrefs" -> {
                 syncPrefsToDeviceProtected()
@@ -375,6 +379,13 @@ class HiCarPlugin : FlutterPlugin, MethodCallHandler {
             fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             try { context.startActivity(fallback) } catch (_: Exception) {}
         }
+    }
+
+    /** Đọc trạng thái "Không hạn chế" từ hệ thống — không phụ thuộc manifest permission. */
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
     private fun handleBluetoothCall(call: MethodCall, result: Result) {

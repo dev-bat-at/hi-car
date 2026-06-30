@@ -138,6 +138,18 @@ class ServiceChannel {
     }
   }
 
+  /// Trạng thái "Không hạn chế" từ PowerManager (chính xác hơn permission_handler).
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('ServiceChannel: isIgnoringBatteryOptimizations error: $e');
+      return false;
+    }
+  }
+
   Future<void> minimizeApp() async {
     try {
       await _channel.invokeMethod('minimizeApp');
@@ -262,7 +274,9 @@ class ServiceChannel {
 
       var added = 0;
       for (final line in raw.split('\n')) {
-        final isError = line.contains(' E HiCar') || line.contains(' W HiCar');
+        final isError = line.contains(' E HiCar') ||
+            line.contains(' W HiCar') ||
+            line.contains('BOOT_PLAYBACK_MISSED');
         if (!isError) continue;
 
         final key = line.trim();
@@ -293,6 +307,7 @@ class ServiceChannel {
 
   /// Map dòng log native sang loại lỗi UI (đều nằm trong AppLogger.errorTypes để hiện thẻ).
   String _mapNativeLineType(String line) {
+    if (line.contains('BOOT_PLAYBACK_MISSED')) return 'native_playback_error';
     if (line.contains('HiCarAudio')) return 'native_playback_error';
     if (line.contains('HiCarSync')) return 'sync_error';
     return 'native_error';

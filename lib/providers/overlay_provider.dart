@@ -31,7 +31,8 @@ class OverlayDebugStore {
 
 class OverlayProvider extends ChangeNotifier {
   static const double _overlayWindowWidth = 80.0;
-  static const double _overlayWindowHeight = 250.0;
+  // 2 nút (chào + tạm biệt), không còn nút mở app.
+  static const double _overlayWindowHeight = 170.0;
 
   bool _isOverlayShowing = false;
   bool _hasPermission = false;
@@ -148,14 +149,13 @@ class OverlayProvider extends ChangeNotifier {
       final active = await FlutterOverlayWindow.isActive();
       if (!active) {
         await FlutterOverlayWindow.showOverlay(
-          enableDrag: true, // 🟢 ĐỔI TỪ false THÀNH true
+          enableDrag: true,
           flag: OverlayFlag.defaultFlag,
-          alignment: OverlayAlignment.centerRight,
+          alignment: OverlayAlignment.topLeft,
           visibility: NotificationVisibility.visibilityPublic,
-          positionGravity: PositionGravity.auto,
+          positionGravity: PositionGravity.none,
           height: _toInitialOverlayPixels(_overlayWindowHeight),
           width: _toInitialOverlayPixels(_overlayWindowWidth),
-          startPosition: const OverlayPosition(0, -259),
         );
       }
       await syncOverlayState();

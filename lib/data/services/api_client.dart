@@ -78,16 +78,16 @@ class ApiClient {
           },
         );
 
-        // 🔴 Rule: 1 Account = 1 Device. Revoke on 401 Unauthorized.
-        if (e.response?.statusCode == 401) {
-          // Thoroughly clear all local state
-          await AuthRepository.instance.logout();
+        // Token hết hạn / bị thu hồi: đăng xuất mềm — giữ nhạc local, chỉ xoá session.
+        final skipRedirect =
+            e.requestOptions.extra['skipAuthRedirect'] == true;
+        if (e.response?.statusCode == 401 && !skipRedirect) {
+          await AuthRepository.instance.expireSession();
 
-          // Force navigate to login
           AppRouter.router.go('/login');
 
           if (kDebugMode) {
-            print('🚨 SESSION REVOKED: Redirecting to login...');
+            print('🚨 SESSION EXPIRED: Redirecting to login (local audio kept)...');
           }
         }
         return handler.next(e);
@@ -100,7 +100,9 @@ class ApiClient {
   // ===== Cached Methods (Memory Cache) =====
 
   Future<Response> get(String path,
-      {Map<String, dynamic>? queryParameters, bool useCache = false}) async {
+      {Map<String, dynamic>? queryParameters,
+      bool useCache = false,
+      bool skipAuthRedirect = false}) async {
     final cacheKey = '$path${queryParameters?.toString() ?? ''}';
 
     if (useCache && _memoryCache.containsKey(cacheKey)) {
@@ -109,7 +111,11 @@ class ApiClient {
     }
 
     try {
-      final response = await _dio.get(path, queryParameters: queryParameters);
+      final response = await _dio.get(
+        path,
+        queryParameters: queryParameters,
+        options: Options(extra: {'skipAuthRedirect': skipAuthRedirect}),
+      );
       if (useCache) _memoryCache[cacheKey] = response;
       return response;
     } catch (e) {

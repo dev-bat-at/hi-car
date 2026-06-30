@@ -76,6 +76,8 @@ class _SplashScreenState extends State<SplashScreen>
       await ServiceChannel.instance.startService();
 
       if (mounted) context.go('/home');
+    } else if (authProvider.sessionExpired) {
+      if (mounted) context.go('/login');
     } else {
       if (mounted) context.go('/connection-mode');
     }

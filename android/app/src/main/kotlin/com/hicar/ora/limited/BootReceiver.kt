@@ -25,9 +25,11 @@ class BootReceiver : BroadcastReceiver() {
         fun scheduleBootRetryAlarms(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             BOOT_ALARM_DELAYS_MS.forEachIndexed { index, delayMs ->
+                val sessionId = BootSessionManager.getCurrentSession(context)
                 val intent = Intent(context, AudioForegroundService::class.java).apply {
                     action = AudioForegroundService.ACTION_BOOT_RETRY_GREETING
                     putExtra(AudioForegroundService.EXTRA_PREFER_BOOT_AUDIO, true)
+                    putExtra(AudioForegroundService.EXTRA_BOOT_SESSION_ID, sessionId)
                 }
                 val pending = PendingIntent.getService(
                     context,
@@ -84,16 +86,24 @@ class BootReceiver : BroadcastReceiver() {
         val isUnlockRetry = intent.action == Intent.ACTION_USER_UNLOCKED ||
             intent.action == Intent.ACTION_USER_PRESENT
 
-        if (isUnlockRetry && AudioForegroundService.bootGreetingHandled) {
-            HiCarDiagnosticLog.d("HiCarBoot", "Unlock retry skip – boot greeting đã phát thành công")
+        val isRealBoot = !isUnlockRetry
+        val bootSessionId = if (isRealBoot) {
+            BootSessionManager.incrementSessionOnBoot(context)
+        } else {
+            BootSessionManager.getCurrentSession(context)
+        }
+
+        if (isUnlockRetry && BootSessionManager.isSessionCompleted(context, bootSessionId)) {
+            HiCarDiagnosticLog.d("HiCarBoot", "Unlock retry skip – boot session $bootSessionId đã hoàn tất")
             return
         }
 
-        HiCarDiagnosticLog.d("HiCarBoot", "Boot trigger OK – connectionMode=$connectionMode, action=${intent.action}")
+        HiCarDiagnosticLog.d("HiCarBoot", "Boot trigger OK – connectionMode=$connectionMode, action=${intent.action}, session=$bootSessionId")
 
         val serviceIntent = Intent(context, AudioForegroundService::class.java).apply {
             action = AudioForegroundService.ACTION_PLAY_GREETING_DELAYED
             putExtra(AudioForegroundService.EXTRA_PREFER_BOOT_AUDIO, true)
+            putExtra(AudioForegroundService.EXTRA_BOOT_SESSION_ID, bootSessionId)
         }
 
         try {

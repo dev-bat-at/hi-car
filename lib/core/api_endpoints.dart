@@ -6,6 +6,7 @@ class ApiEndpoints {
   static const String loginPhone = '/api/auth/login/phone/';
   static const String register = '/api/auth/register/';
   static const String logout = '/api/auth/logout';
+  static const String authMe = '/api/auth/me';
 
   // Vehicles
   static const String vehicles = '/api/vehicles/';

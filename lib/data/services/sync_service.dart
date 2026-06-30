@@ -65,11 +65,19 @@ class SyncService {
         String? localPath = localMatch?.localPath;
         bool needsDownload = true;
 
-        // Optimized Skip: If file exists and hash hasn't changed
-        if (localMatch != null && localPath != null) {
-          final fileExists = await File(localPath).exists();
-          if (fileExists && localMatch.hash == audioModel.hash) {
-            needsDownload = false;
+        // Giữ file cũ: nếu hash không đổi, dùng bất kỳ bản local nào còn trên disk.
+        if (localMatch != null && localMatch.hash == audioModel.hash) {
+          final candidates = <String>{
+            if (localPath != null && localPath.isNotEmpty) localPath,
+            _localPathFor(audioModel.id, audioModel.hash, audioDir.path),
+            '${audioDir.path}/${audioModel.id}.mp3',
+          };
+          for (final candidate in candidates) {
+            if (await File(candidate).exists()) {
+              localPath = candidate;
+              needsDownload = false;
+              break;
+            }
           }
         }
 
@@ -79,6 +87,7 @@ class SyncService {
             audioId: audioModel.id,
             url: audioModel.remoteUrl,
             audioDir: audioDir,
+            contentHash: audioModel.hash,
           );
         }
 
@@ -110,8 +119,9 @@ class SyncService {
     required String audioId,
     required String url,
     required Directory audioDir,
+    String? contentHash,
   }) async {
-    final destPath = '${audioDir.path}/$audioId.mp3';
+    final destPath = _localPathFor(audioId, contentHash, audioDir.path);
     // ignore: avoid_print
     print('📥 ĐANG TẢI FILE: $url -> $destPath');
 
@@ -161,6 +171,13 @@ class SyncService {
   Future<bool> fileExists(String? path) async {
     if (path == null) return false;
     return File(path).exists();
+  }
+
+  String _localPathFor(String audioId, String? hash, String dirPath) {
+    if (hash != null && hash.isNotEmpty) {
+      return '$dirPath/${audioId}_$hash.mp3';
+    }
+    return '$dirPath/$audioId.mp3';
   }
 
   /// Deletes a local audio file.

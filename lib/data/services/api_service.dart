@@ -41,6 +41,19 @@ class ApiService {
     return data;
   }
 
+  /// Lấy thông tin tài khoản hiện tại (xác thực token còn hiệu lực).
+  /// API: GET /api/auth/me
+  Future<Map<String, dynamic>> getMe() async {
+    final response = await _client.get(
+      ApiEndpoints.authMe,
+      skipAuthRedirect: true,
+    );
+    final data = response.data['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return {};
+  }
+
   /// Đăng xuất tài khoản.
   /// API: POST /api/auth/logout
   Future<void> logout() async {

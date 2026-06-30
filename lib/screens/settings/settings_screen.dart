@@ -325,12 +325,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showBugReportDialog(BuildContext context) {
+  Future<void> _showBugReportDialog(BuildContext context) async {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
-    // Kéo lỗi native mới nhất (kể cả lỗi lúc boot) vào danh sách trước khi mở. AppLogger
-    // notifyListeners → ListenableBuilder bên dưới tự refresh khi có thẻ mới được thêm.
-    ServiceChannel.instance.importNativeDiagnostics();
+    await ServiceChannel.instance.importNativeDiagnostics();
+    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (context) => ListenableBuilder(
@@ -369,19 +368,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
             content: SizedBox(
               width: isLandscape ? 0.55.sw : double.maxFinite,
               child: logs.isEmpty
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle_outline_rounded,
-                            color: AppColors.success, size: 48.sp),
-                        SizedBox(height: 16.h),
-                        Text(
-                          'Chưa ghi nhận lỗi nào.\nLỗi từ API/native sẽ hiện ở đây.',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 13.sp),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                  ? FutureBuilder<String>(
+                      future: ServiceChannel.instance.getDiagnosticLogFull(),
+                      builder: (context, fullSnap) {
+                        final fullLog = fullSnap.data?.trim() ?? '';
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_outline_rounded,
+                                color: AppColors.success, size: 48.sp),
+                            SizedBox(height: 16.h),
+                            Text(
+                              'Chưa ghi nhận lỗi nào.\nLỗi từ API/native sẽ hiện ở đây.',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 13.sp),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (fullLog.isNotEmpty) ...[
+                              SizedBox(height: 16.h),
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showSendBugSheet(
+                                    context,
+                                    AppLog(
+                                      id: 'native-full-log',
+                                      timestamp: DateTime.now(),
+                                      message:
+                                          '[Log kỹ thuật native] Boot/service — gửi log đầy đủ từ thiết bị.',
+                                      type: 'native_error',
+                                    ),
+                                  );
+                                },
+                                icon: Icon(Icons.bug_report_outlined,
+                                    size: 16.sp),
+                                label: Text('Gửi log kỹ thuật',
+                                    style: TextStyle(fontSize: 12.sp)),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.primary,
+                                  side: BorderSide(color: AppColors.primary),
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     )
                   : ConstrainedBox(
                       constraints: BoxConstraints(

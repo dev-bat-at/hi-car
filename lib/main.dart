@@ -160,6 +160,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //    đang chuyển cảnh...) khiến nút nổi bị tắt sớm/giật và đóng/mở liên tục.
     if (state == AppLifecycleState.resumed) {
       _overlayProvider.hideOverlay();
+      ServiceChannel.instance.importNativeDiagnostics().catchError((_) {});
 
       // 🟢 Chế độ Màn Độ: mỗi lần MỞ LẠI app (resume từ nền) thì phát lại lời chào.
       //    Vì sau khi phát xong app chỉ bị thu nhỏ (moveToHome) chứ không bị kill,
@@ -202,7 +203,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
 
     debugPrint('Main: App resumed in screen mode → phát lại lời chào');
-    await _audioProvider.playGreetingViaNative();
+    await _audioProvider.playGreetingViaNative(allowAutostartRetry: true);
   }
 
   void _initIsolateListener() {
@@ -334,7 +335,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (_audioProvider.audioList.isNotEmpty) {
       debugPrint('Main: Triggering play greeting on open...');
       _hasTriggeredOpenGreeting = true;
-      await _audioProvider.playGreetingViaNative();
+      await _audioProvider.playGreetingViaNative(allowAutostartRetry: true);
     } else {
       debugPrint(
           'Main: Could not trigger greeting - list still empty after 10s');

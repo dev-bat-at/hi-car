@@ -1,6 +1,5 @@
 import 'dart:isolate';
 import 'dart:ui';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,12 +40,7 @@ class _OverlayStripState extends State<OverlayStrip> {
   bool _isGreetingPlaying = false;
   bool _isGoodbyePlaying = false;
   String? _errorMessage;
-  BoxShape _currentShape = BoxShape.circle;
-
-  int _toPhysicalPixels(double logicalSize) {
-    final ratio = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
-    return (logicalSize * ratio).round();
-  }
+  // BoxShape _currentShape = BoxShape.circle; // resize full-screen tắt để không chặn kéo nút nổi
 
   @override
   void initState() {
@@ -164,15 +158,18 @@ class _OverlayStripState extends State<OverlayStrip> {
       });
       final ok = await _invokeBridge('playGoodbye');
       if (ok == false && mounted) {
-        // Chưa cấu hình lời tạm biệt (native đã hiện Toast cho khách).
         setState(() => _isGoodbyePlaying = false);
+        _showToast('Chưa cấu hình lời tạm biệt');
+      } else if (ok == null && mounted) {
+        setState(() => _isGoodbyePlaying = false);
+        _showToast('Không kết nối được native');
       }
     }
   }
 
-  Future<void> _openApp() async {
-    await _invokeBridge('openApp');
-  }
+  // Future<void> _openApp() async {
+  //   await _invokeBridge('openApp');
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -181,18 +178,25 @@ class _OverlayStripState extends State<OverlayStrip> {
       elevation: 0.0,
       child: Stack(
         children: [
-          // 1. Background layer
+          // Glass
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(48),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Container(
+                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(48),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.20),
+                        Colors.white.withOpacity(0.06),
+                      ],
+                    ),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withOpacity(0.28),
                       width: 1.2,
                     ),
                   ),
@@ -200,40 +204,19 @@ class _OverlayStripState extends State<OverlayStrip> {
               ),
             ),
           ),
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () async {
-                if (_currentShape == BoxShape.rectangle) {
-                  await FlutterOverlayWindow.resizeOverlay(
-                    _toPhysicalPixels(80),
-                    _toPhysicalPixels(
-                        250), // Standard size from OverlayProvider
-                    true,
-                  );
-                  setState(() {
-                    _currentShape = BoxShape.circle;
-                  });
-                } else {
-                  await FlutterOverlayWindow.resizeOverlay(
-                    WindowSize.matchParent,
-                    WindowSize.matchParent,
-                    false,
-                  );
-                  setState(() {
-                    _currentShape = BoxShape.rectangle;
-                  });
-                }
-              },
-              child: Container(color: Colors.transparent),
-            ),
-          ),
+          // Tap full-screen resize tắt — lớp này nuốt touch, khiến enableDrag native không kéo được.
+          // Positioned.fill(
+          //   child: GestureDetector(
+          //     onTap: () async { ... },
+          //     child: Container(color: Colors.transparent),
+          //   ),
+          // ),
           // 2. Buttons layer
           Positioned.fill(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                const SizedBox(height: 4),
                 Expanded(
                   child: _buildNeonButton(
                     icon: _isGreetingPlaying
@@ -254,14 +237,15 @@ class _OverlayStripState extends State<OverlayStrip> {
                     onTap: _toggleGoodbye,
                   ),
                 ),
-                Expanded(
-                  child: _buildNeonButton(
-                    icon: Icons.grid_view_rounded,
-                    iconColor: Colors.white,
-                    isGlow: false,
-                    onTap: _openApp,
-                  ),
-                ),
+                // Nút mở app — tạm ẩn, chỉ giữ chào + tạm biệt.
+                // Expanded(
+                //   child: _buildNeonButton(
+                //     icon: Icons.grid_view_rounded,
+                //     iconColor: Colors.white,
+                //     isGlow: false,
+                //     onTap: _openApp,
+                //   ),
+                // ),
                 const SizedBox(height: 4),
               ],
             ),
@@ -306,50 +290,57 @@ class _OverlayStripState extends State<OverlayStrip> {
     required bool isGlow,
     required VoidCallback onTap,
   }) {
-    return _OverlayScaleButton(
-      onTap: onTap,
-      child: Center(
-        child: ClipOval(
-          child: Material(
-            color: Color(0xFF083C26),
-            child: InkWell(
-              onTap: onTap,
-              splashColor: iconColor.withOpacity(0.3),
-              child: Container(
-                width: 65,
-                height: 65,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: isGlow
-                      ? LinearGradient(
-                          colors: [
-                            _neonCyan.withOpacity(0.2),
-                            _neonBlue.withOpacity(0.4)
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : null,
-                  border: Border.all(
-                    color: isGlow ? _neonCyan : Colors.white.withOpacity(0.15),
-                    width: 1.2,
+    return Center(
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 72,
+          height: 72,
+          child: Center(
+            child: ClipOval(
+              child: Material(
+                color: const Color(0xFF083C26),
+                child: Container(
+                  width: 65,
+                  height: 65,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: isGlow
+                        ? LinearGradient(
+                            colors: [
+                              _neonCyan.withOpacity(0.2),
+                              _neonBlue.withOpacity(0.4),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    border: Border.all(
+                      color:
+                          isGlow ? _neonCyan : Colors.white.withOpacity(0.15),
+                      width: 1.2,
+                    ),
                   ),
-                ),
-                child: _PulseWrapper(
-                  key: ValueKey('pulse_$isGlow'),
-                  isGlow: isGlow,
-                  iconColor: iconColor,
-                  child: Center(
-                    key: ValueKey('icon_$isGlow'),
-                    child: Icon(
-                      icon,
-                      color: iconColor,
-                      size: 30,
-                      shadows: isGlow
-                          ? [
-                              Shadow(color: iconColor, blurRadius: 10),
-                            ]
-                          : null,
+                  child: _PulseWrapper(
+                    key: ValueKey('pulse_$isGlow'),
+                    isGlow: isGlow,
+                    iconColor: iconColor,
+                    child: Center(
+                      key: ValueKey('icon_$isGlow'),
+                      child: Icon(
+                        icon,
+                        color: iconColor,
+                        size: 30,
+                        shadows: isGlow
+                            ? [
+                                Shadow(color: iconColor, blurRadius: 10),
+                              ]
+                            : null,
+                      ),
                     ),
                   ),
                 ),
@@ -436,56 +427,6 @@ class _PulseWrapperState extends State<_PulseWrapper>
         );
       },
       child: widget.child,
-    );
-  }
-}
-
-class _OverlayScaleButton extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onTap;
-
-  const _OverlayScaleButton({required this.child, required this.onTap});
-
-  @override
-  State<_OverlayScaleButton> createState() => _OverlayScaleButtonState();
-}
-
-class _OverlayScaleButtonState extends State<_OverlayScaleButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 100),
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        _controller.forward().then((_) => _controller.reverse());
-        HapticFeedback.lightImpact();
-        widget.onTap();
-      },
-      behavior: HitTestBehavior.opaque,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: widget.child,
-      ),
     );
   }
 }
