@@ -1,6 +1,9 @@
 package com.hicar.ora.limited
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Build
 
@@ -16,6 +19,9 @@ object BootSessionManager {
     private const val KEY_MISS_REPORTED = "boot_miss_reported_session_id"
     private const val KEY_LAST_INCREMENT_MS = "last_boot_increment_at_ms"
     private const val BOOT_INCREMENT_DEBOUNCE_MS = 60_000L
+
+    const val BOOT_RETRY_ALARM_REQUEST_BASE = 100
+    const val BOOT_RETRY_ALARM_COUNT = 3
 
     private fun prefs(context: Context): SharedPreferences {
         val app = context.applicationContext
@@ -53,13 +59,14 @@ object BootSessionManager {
         return prefs(context).getLong(KEY_COMPLETED, -1L) >= sessionId
     }
 
-    fun markSessionCompleted(context: Context, sessionId: Long) {
+    fun markSessionCompleted(context: Context, sessionId: Long, reason: String = "completed") {
         if (sessionId <= 0L) return
         val p = prefs(context)
         val prev = p.getLong(KEY_COMPLETED, -1L)
         if (sessionId > prev) {
             p.edit().putLong(KEY_COMPLETED, sessionId).apply()
-            HiCarDiagnosticLog.d("HiCarBoot", "Boot session $sessionId completed (onCompletion)")
+            HiCarDiagnosticLog.d("HiCarBoot", "Boot session $sessionId completed ($reason)")
+            cancelBootRetryAlarms(context)
         }
     }
 
@@ -70,5 +77,26 @@ object BootSessionManager {
         if (p.getLong(KEY_MISS_REPORTED, -1L) == sessionId) return
         HiCarDiagnosticLog.e("HiCarBoot", "BOOT_PLAYBACK_MISSED: $reason (session=$sessionId)")
         p.edit().putLong(KEY_MISS_REPORTED, sessionId).apply()
+    }
+
+    /** Hủy alarm retry boot (Box) khi session đã phát thành công. */
+    fun cancelBootRetryAlarms(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        for (index in 0 until BOOT_RETRY_ALARM_COUNT) {
+            val intent = Intent(context, AudioForegroundService::class.java).apply {
+                action = AudioForegroundService.ACTION_BOOT_RETRY_GREETING
+            }
+            val pending = PendingIntent.getService(
+                context,
+                BOOT_RETRY_ALARM_REQUEST_BASE + index,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            pending?.let {
+                alarmManager.cancel(it)
+                it.cancel()
+            }
+        }
+        HiCarDiagnosticLog.d("HiCarBoot", "Boot retry alarms cancelled")
     }
 }

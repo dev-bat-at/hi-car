@@ -33,7 +33,7 @@ class BootReceiver : BroadcastReceiver() {
                 }
                 val pending = PendingIntent.getService(
                     context,
-                    100 + index,
+                    BootSessionManager.BOOT_RETRY_ALARM_REQUEST_BASE + index,
                     intent,
                     PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
                 )
